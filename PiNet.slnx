@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/PiNet.AgentCore.Tests/PiNet.AgentCore.Tests.csproj" />
+    <Project Path="src/PiNet.Cli.Tests/PiNet.Cli.Tests.csproj" />
+    <Project Path="src/PiNet.AgentCore/PiNet.AgentCore.csproj" />
+    <Project Path="src/PiNet.Sessions.Tests/PiNet.Sessions.Tests.csproj" />
+    <Project Path="src/PiNet.Sessions/PiNet.Sessions.csproj" />
+  </Folder>
+  <Project Path="src/PiNet.Abstractions/PiNet.Abstractions.csproj" />
+  <Project Path="src/PiNet.Cli/PiNet.Cli.csproj" />
+  <Project Path="src/PiNet.Providers/PiNet.Providers.csproj" />
+</Solution>

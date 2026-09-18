@@ -1,0 +1,25 @@
+# Build results
+bin/
+obj/
+out/
+*.suo
+
+# IDE / editor
+.vs/
+.vscode/
+.idea/
+*.user
+*.swp
+
+# Test results
+TestResults/
+*.trx
+coverage*.xml
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Local secrets / env
+.env
+*.local
