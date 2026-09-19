@@ -1,3 +1,4 @@
+using System.Text.Json;
 using PiNet.Abstractions.Chat;
 using PiNet.Abstractions.Models;
 using PiNet.Abstractions.Providers;
@@ -44,6 +45,13 @@ public sealed class ScriptedProvider : IChatProvider
         return this;
     }
 
+    /// <summary>Enqueues a raw event sequence (e.g. a tool-call turn).</summary>
+    public ScriptedProvider EnqueueEvents(IReadOnlyList<StreamEvent> events)
+    {
+        _script.Enqueue(events);
+        return this;
+    }
+
     public async IAsyncEnumerable<StreamEvent> StreamAsync(ChatRequest request, AuthInfo auth)
     {
         StreamCalls++;
@@ -70,6 +78,37 @@ public sealed class ScriptedProvider : IChatProvider
         public static readonly NoCredentials Instance = new();
         public ValueTask<AuthInfo> ResolveAsync(CancellationToken ct = default) =>
             new(new AuthInfo("none", null));
+    }
+}
+
+/// <summary>
+/// Builders for scripted tool-call turns: the event sequence an assistant
+/// message containing one tool call produces.
+/// </summary>
+public static class ToolCallScript
+{
+    private static Usage Usage { get; } = new(1, 2, 0, 0, new Cost(0, 0, 0, 0));
+
+    /// <summary>A turn that calls the bash tool with the given command.</summary>
+    public static IReadOnlyList<StreamEvent> Bash(string command, string callId = "call-1")
+        => ToolCall(callId, "bash", $"{{\"command\": {JsonSerializer.Serialize(command)}}}");
+
+    /// <summary>A turn that calls the write_file tool.</summary>
+    public static IReadOnlyList<StreamEvent> WriteFile(string path, string content, string callId = "call-1")
+        => ToolCall(callId, "write_file", $"{{\"path\": {JsonSerializer.Serialize(path)}, \"content\": {JsonSerializer.Serialize(content)}}}");
+
+    private static IReadOnlyList<StreamEvent> ToolCall(string id, string name, string argumentsJson)
+    {
+        var message = new ChatMessage(ChatRole.Assistant,
+            [new ToolCallContent(id, name, JsonDocument.Parse(argumentsJson).RootElement)]);
+        return
+        [
+            new StreamStart("faux", "faux-model", $"{id}-req"),
+            new ToolCallStart(0, id, name),
+            new ToolCallDelta(0, argumentsJson),
+            new ToolCallEnd(0, new ToolCallDetail(id, name, argumentsJson)),
+            new StreamEnd("tool_calls", Usage, message)
+        ];
     }
 }
 

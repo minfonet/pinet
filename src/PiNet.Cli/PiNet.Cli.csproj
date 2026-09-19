@@ -5,6 +5,7 @@
     <ProjectReference Include="..\PiNet.Providers\PiNet.Providers.csproj" />
     <ProjectReference Include="..\PiNet.AgentCore\PiNet.AgentCore.csproj" />
     <ProjectReference Include="..\PiNet.Sessions\PiNet.Sessions.csproj" />
+    <ProjectReference Include="..\PiNet.Permissions\PiNet.Permissions.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

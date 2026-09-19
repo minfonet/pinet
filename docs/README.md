@@ -29,6 +29,8 @@ This folder contains all project documentation, written using the **Spec-Driven 
 | [01-stage-1-unified-llm.md](spec/01-stage-1-unified-llm.md) | 1 — Foundation & Unified LLM | Verified |
 | [02-stage-2-agent-core.md](spec/02-stage-2-agent-core.md) | 2 — Agent Core | Verified |
 | [03-stage-3-sessions.md](spec/03-stage-3-sessions.md) | 3 — Sessions (JSONL tree) | Verified |
+| [04-stage-4-interactive-loop.md](spec/04-stage-4-interactive-loop.md) | 4 — Interactive CLI Loop | Verified |
+| [05-stage-5-permissions.md](spec/05-stage-5-permissions.md) | 5 — Permissions & Tool Security | Verified |
 
 ### Architecture Decision Records (adr/)
 
@@ -37,6 +39,12 @@ This folder contains all project documentation, written using the **Spec-Driven 
 | [0001-raw-http-over-sdks.md](adr/0001-raw-http-over-sdks.md) | Implement LLM providers with raw HTTP + SSE rather than vendor SDKs |
 | [0002-stream-event-model.md](adr/0002-stream-event-model.md) | Unified `StreamEvent` discriminated union across providers |
 | [0003-imodelrunner-in-abstractions.md](adr/0003-imodelrunner-in-abstractions.md) | Agent core depends only on `Abstractions` via `IModelRunner` |
+
+### Guides
+
+| Doc | Topic |
+|-----|-------|
+| [permissions.md](permissions.md) | Permission rules, config files, `/trust`, `--approve`, container template |
 
 ## Conventions
 

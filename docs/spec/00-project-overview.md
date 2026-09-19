@@ -75,9 +75,8 @@ features — those are extension points.
 | 1 | Foundation & Unified LLM Abstraction | Implemented / Verified |
 | 2 | Agent Core: Tool-Calling Loop | Verified (see [02-stage-2-agent-core.md](02-stage-2-agent-core.md)) |
 | 3 | Session Management (JSONL tree) | Verified (see [03-stage-3-sessions.md](03-stage-3-sessions.md)) |
-| 3 | Session Management (JSONL tree) | Proposed |
-| 4 | Interactive CLI & Terminal UI | Not started |
-| 5 | Permissions & Tool Security | Not started |
+| 4 | Interactive CLI & Terminal UI | Verified (see [04-stage-4-interactive-loop.md](04-stage-4-interactive-loop.md)) |
+| 5 | Permissions & Tool Security | Verified (see [05-stage-5-permissions.md](05-stage-5-permissions.md)) |
 | 6 | Extension System & Skills | Not started |
 | 7 | Advanced Features | Not started |
 | 8 | Polish, Packaging & Release | Not started |

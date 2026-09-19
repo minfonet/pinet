@@ -8,7 +8,8 @@ public enum SlashCommandKind
     NewSession,
     Resume,
     Fork,
-    Model
+    Model,
+    Trust
 }
 
 public sealed record SlashCommand(SlashCommandKind Kind, string Name, string? Arg, string Raw);
@@ -34,6 +35,7 @@ public static class SlashCommandParser
             "resume" => SlashCommandKind.Resume,
             "fork" => SlashCommandKind.Fork,
             "model" => SlashCommandKind.Model,
+            "trust" => SlashCommandKind.Trust,
             _ => SlashCommandKind.Unknown
         };
 

@@ -1,6 +1,7 @@
 using PiNet.Abstractions.Chat;
 using PiNet.AgentCore;
 using PiNet.AgentCore.Tools;
+using PiNet.Permissions;
 using PiNet.Providers;
 using PiNet.Sessions;
 
@@ -14,6 +15,8 @@ public sealed class InteractiveLoop
     private readonly IConsoleInput _input;
     private readonly IConsoleOutput _out;
     private readonly Action<CancellationTokenSource>? _turnCancellation;
+    private readonly IPermissionResolver? _permissions;
+    private readonly IPermissionPrompt? _permissionPrompt;
 
     private readonly LineEditor _editor = new();
     private readonly LineHistory _history = new();
@@ -38,7 +41,9 @@ public sealed class InteractiveLoop
         string? sessionRef = null,
         string? forkRef = null,
         bool continueLatest = false,
-        Action<CancellationTokenSource>? turnCancellation = null)
+        Action<CancellationTokenSource>? turnCancellation = null,
+        IPermissionResolver? permissions = null,
+        IPermissionPrompt? permissionPrompt = null)
     {
         _chat = chat;
         _manager = manager;
@@ -52,6 +57,8 @@ public sealed class InteractiveLoop
         ForkRef = forkRef;
         ContinueLatest = continueLatest;
         _turnCancellation = turnCancellation;
+        _permissions = permissions;
+        _permissionPrompt = permissionPrompt;
     }
 
     private bool NoSession { get; }
@@ -170,6 +177,9 @@ public sealed class InteractiveLoop
         _agent = new Agent(new AgentOptions
         {
             Runner = _chat,
+            BeforeToolCall = _permissions is not null && _permissionPrompt is not null
+                ? PermissionGate.Create(_permissions, _permissionPrompt, _cwd)
+                : null,
             InitialState = new AgentState
             {
                 SystemPrompt = CliConfig.DefaultSystemPrompt,
@@ -226,6 +236,9 @@ public sealed class InteractiveLoop
                 return true;
             case SlashCommandKind.Model:
                 SwitchModel(command.Arg);
+                return true;
+            case SlashCommandKind.Trust:
+                await TrustProjectAsync(command.Arg, hostCt);
                 return true;
             default:
                 _out.WriteLine($"Unknown command: /{command.Name}", ConsoleColor.Red);
@@ -314,6 +327,43 @@ public sealed class InteractiveLoop
         _out.WriteLine($"(model: {_provider}/{_model})");
     }
 
+    private async Task TrustProjectAsync(string? arg, CancellationToken ct)
+    {
+        if (_permissions is null)
+        {
+            _out.WriteLine("Permissions are not enabled.", ConsoleColor.Red);
+            return;
+        }
+
+        try
+        {
+            var turningOff = arg is not null && arg.Trim().Equals("off", StringComparison.OrdinalIgnoreCase);
+            var changed = turningOff
+                ? await TrustStore.UntrustAsync(_cwd, ct)
+                : await TrustStore.TrustAsync(_cwd, ct);
+            _permissions.SetProjectRules(await LoadProjectRulesAsync(ct));
+
+            if (turningOff)
+                _out.WriteLine(changed ? "(project no longer trusted)" : "(project was not trusted)");
+            else
+                _out.WriteLine(changed
+                    ? "(project trusted: bash allowed without prompt)"
+                    : "(project already trusted)");
+        }
+        catch (PermissionConfigException ex)
+        {
+            _out.WriteLine(ex.Message, ConsoleColor.Red);
+        }
+    }
+
+    private async Task<IReadOnlyList<PermissionRule>> LoadProjectRulesAsync(CancellationToken ct)
+    {
+        var path = PermissionPaths.ProjectConfigPath(_cwd);
+        if (!File.Exists(path))
+            return [];
+        return (await PermissionConfig.LoadAsync(path, ct)).Rules;
+    }
+
     private async Task RunTurnAsync(string prompt, CancellationToken hostCt)
     {
         var cts = CancellationTokenSource.CreateLinkedTokenSource(hostCt);
@@ -369,6 +419,7 @@ public sealed class InteractiveLoop
                 "resume" => "/resume [id|path]  — resume a saved session",
                 "fork" => "/fork <id|path>  — fork a session and continue it",
                 "model" => "/model <provider>/<id>  — switch models",
+                "trust" => "/trust [off]  — trust this project (bash without prompt) / untrust",
                 "unknown" => "unknown command (try /help)",
                 _ => null
             };
@@ -383,6 +434,7 @@ public sealed class InteractiveLoop
         _out.WriteLine("  /resume [id|path]      resume a saved session");
         _out.WriteLine("  /fork <id|path>        fork a session and continue it");
         _out.WriteLine("  /model <provider>/<id> switch models");
+        _out.WriteLine("  /trust [off]           trust this project (bash without prompt) / untrust");
     }
 
     private static string AgeOf(DateTime utc)

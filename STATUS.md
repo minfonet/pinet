@@ -9,9 +9,9 @@
 | Item | State |
 |------|-------|
 | Solution | `PiNet.slnx` — builds clean (0 warnings, 0 errors) |
-| Tests | **111 passing** (27 `PiNet.AgentCore.Tests` + 13 `PiNet.Sessions.Tests` + 71 `PiNet.Cli.Tests`), 0 failing |
-| Current stage | **Stage 5 — Permissions** (spec `05`, not started) |
-| Stages complete | 1, 2, 3, 4 (specs verified against the running CLI) |
+| Tests | **167 passing** (47 `PiNet.Permissions.Tests` + 27 `PiNet.AgentCore.Tests` + 13 `PiNet.Sessions.Tests` + 80 `PiNet.Cli.Tests`), 0 failing |
+| Current stage | **Stage 6 — Extensions & Skills** (next) |
+| Stages complete | 1, 2, 3, 4, 5 (specs verified against the running CLI) |
 | Packaging | Git repo initialized with `.gitignore`; CI/release not started (Stage 8) |
 
 ## Projects
@@ -22,12 +22,14 @@
 | `PiNet.Providers` | `ChatService` facade; OpenAI + Anthropic providers (raw HTTP + SSE, ADR-0001); `Faux` provider for deterministic tests; per-provider model catalogs | Done (Stage 1) |
 | `PiNet.AgentCore` | `Agent` loop (`PromptAsync`/`ContinueAsync`/`Abort`/`Subscribe`), `AgentEvent` lifecycle, parallel/sequential tool execution, `BeforeToolCall`/`AfterToolCall` hooks, `TransformContext`/`ConvertToLlm`, built-in tools (`read`, `write`, `edit`, `bash`) | Done (Stage 2) |
 | `PiNet.Sessions` | JSONL tree sessions (`Session`, `SessionEntry`, `SessionStore`, `SessionJson`), `SessionManager` (create/load/latest/list/fork, append watermark), `SessionCompactor` (LLM summarization) | Done (Stage 3) |
-| `PiNet.Cli` | Entry point: `-p/--print`, `--agent` one-shot, `--interactive/-i` loop, session flags (`--session`, `-c`, `--fork`, `--no-session`), `--list-models`; interactive layer: `LineEditor`, `LineHistory`, `SlashCommand`, `AgentConsoleRenderer` (shared folding), `TurnRunner` (shared turn/persist), `InteractiveLoop` | Done (Stage 4) |
+| `PiNet.Cli` | Entry point: `-p/--print`, `--agent` one-shot, `--interactive/-i` loop, session flags (`--session`, `-c`, `--fork`, `--no-session`), `--list-models`, `--approve`/`--no-approve`; interactive layer: `LineEditor`, `LineHistory`, `SlashCommand` (incl. `/trust`), `AgentConsoleRenderer` (shared folding), `TurnRunner` (shared turn/persist), `InteractiveLoop`, `PermissionGate` + `ConsolePermissionPrompt` | Done (Stages 4–5) |
+| `PiNet.Permissions` | Zero-project-reference permission layer: `ToolPermission`/`PermissionRule` + `Glob`, `RulePermissionResolver` (safety floor → deny-sticky → session→project→global → default), `PermissionConfig` (JSON load/save, `PI_NET_HOME`), `ToolPaths`, `IPermissionPrompt` (`AutoApprovePrompt`, `DenyAllPrompt`), `TrustStore` | Done (Stage 5) |
 | `PiNet.AgentCore.Tests` | Loop, hooks, tool execution, built-in tools (scripted `IModelRunner`) | 27 passing |
 | `PiNet.Sessions.Tests` | Session tree, JSONL store, compactor | 13 passing |
-| `PiNet.Cli.Tests` | Line editor, history, slash parser, renderer folding, and full `InteractiveLoop` tests (scripted keys, `ScriptedProvider`, `HangingProvider`) | 71 passing |
+| `PiNet.Permissions.Tests` | Rule matching, resolution algorithm, config load/save/malformed, `PI_NET_HOME`, `TrustStore`, `ToolPaths` | 47 passing |
+| `PiNet.Cli.Tests` | Line editor, history, slash parser, renderer folding, full `InteractiveLoop` tests (scripted keys, `ScriptedProvider`, `HangingProvider`), and permission-gate AC1–AC4 tests (`PermissionGateTests`, `ToolCallScript`) | 80 passing |
 
-Not yet created (later stages): `PiNet.Permissions` (5), `PiNet.Extensions` (6),
+Not yet created (later stages): `PiNet.Extensions` (6),
 steering/follow-up + advanced features (7), packaging/CI (8).
 
 ## Stage-by-stage
@@ -63,24 +65,48 @@ All acceptance criteria checked off (evidence in spec §7 verification log):
 - [x] AC3: slash command coverage tests (parse + loop dispatch, incl. picker, fork, model switch)
 - [x] AC4: Ctrl+C cancel/exit semantics tested (aborted turn not persisted; empty-prompt exit code 0)
 
-### Stages 5–8 — ⬜ not started
-Permissions (5), extensions/skills (6), steering/follow-up + compaction polish (7),
+### Stage 5 — Permissions & Tool Security — ✅ verified
+Spec [`docs/spec/05`](docs/spec/05-stage-5-permissions.md) marked *Verified* (2026-07-09).
+New zero-project-reference `PiNet.Permissions` project (pure BCL + `System.Text.Json`);
+the gate lives in the CLI (`PermissionGate` adapts resolver + prompt to `BeforeToolCall`).
+
+Implemented:
+- Resolution algorithm: safety floor (out-of-cwd writes always denied) → deny-sticky
+  (any deny in any layer wins) → first non-deny match in session→project→global order →
+  default (`bash` asks, everything else allows)
+- Config files: `~/.pinet/permissions.json` (global, `PI_NET_HOME` override) and
+  `<cwd>/.pi/permissions.json` (project); missing = empty, malformed = startup error
+- Interactive prompt: `a` allow once / `s` allow for session / `d`/Enter deny (safe default)
+- `/trust` and `/trust off` — merge/remove the bash-allow project rule
+- `--approve` (auto-approve asks; denies still apply), `--no-approve` (re-ask bash),
+  non-interactive fallback (`DenyAllPrompt` with one-line notice)
+- Denied calls return `Blocked: <reason>` as an error tool result — the LLM sees it and adapts
+- `docs/permissions.md` — config reference + Dockerfile sandbox template
+
+All acceptance criteria checked off (evidence in spec §7 verification log):
+- [x] AC1: first `bash` in a new project prompts; `a` runs the tool, `d` blocks it, agent continues
+- [x] AC2: `/trust` persists project trust; subsequent `bash` no longer prompts; `/trust off` reverts
+- [x] AC3: `--approve` bypasses prompts (denies still apply); non-interactive stdin denies with notice
+- [x] AC4: path-scoped deny (`secrets/*`) blocks matching writes only; out-of-cwd writes always blocked
+
+### Stages 6–8 — ⬜ not started
+Extensions/skills (6), steering/follow-up + compaction polish (7),
 packaging/CI/release (8). See `IMPLEMENTATION_PLAN.md`.
 
 ## Known issues / next steps
 
-1. **Stage 5 — Permissions** (entry point now unblocked): write spec `05` before coding
-   (SDD), then implement the `PiNet.Permissions` project. See `IMPLEMENTATION_PLAN.md`.
-2. **Stage 5 prep done** (2026-07-09): Stage 4 tests written (71 passing), dead code in
-   `Program.cs` removed (bare prompt now defaults to print mode), `Class1.cs` deleted,
-   git repo initialized with `.gitignore`.
+1. **Stage 6 — Extensions & Skills** (next): write spec `06` before coding (SDD),
+   then implement the `PiNet.Extensions` project. See `IMPLEMENTATION_PLAN.md`.
+2. **Stage 5 done** (2026-07-09): `PiNet.Permissions` + CLI gate + `/trust` +
+   `--approve`/`--no-approve` implemented and verified (167 tests passing);
+   `docs/permissions.md` delivered.
 3. Later: packaging/CI/release (Stage 8), steering/follow-up + compaction polish (Stage 7).
 
 ## Verification commands
 
 ```bash
 dotnet build PiNet.slnx        # 0 warnings, 0 errors
-dotnet test PiNet.slnx         # 111/111 passing
+dotnet test PiNet.slnx         # 167/167 passing
 dotnet run --project src/PiNet.Cli -- --list-models
 dotnet run --project src/PiNet.Cli -- --provider faux --model faux-model -p "hi"
 ```

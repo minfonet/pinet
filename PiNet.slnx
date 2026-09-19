@@ -5,6 +5,8 @@
     <Project Path="src/PiNet.AgentCore/PiNet.AgentCore.csproj" />
     <Project Path="src/PiNet.Sessions.Tests/PiNet.Sessions.Tests.csproj" />
     <Project Path="src/PiNet.Sessions/PiNet.Sessions.csproj" />
+    <Project Path="src/PiNet.Permissions/PiNet.Permissions.csproj" />
+    <Project Path="src/PiNet.Permissions.Tests/PiNet.Permissions.Tests.csproj" />
   </Folder>
   <Project Path="src/PiNet.Abstractions/PiNet.Abstractions.csproj" />
   <Project Path="src/PiNet.Cli/PiNet.Cli.csproj" />

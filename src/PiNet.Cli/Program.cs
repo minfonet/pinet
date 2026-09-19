@@ -3,6 +3,7 @@ using PiNet.Abstractions.Streaming;
 using PiNet.AgentCore;
 using PiNet.AgentCore.Tools;
 using PiNet.Cli.Interact;
+using PiNet.Permissions;
 using PiNet.Providers;
 using PiNet.Sessions;
 
@@ -36,6 +37,8 @@ internal static class Program
         var continueLatest = false;
         var noSession = false;
         string? apiKeyOverride = null;
+        var approve = false;
+        var noApprove = false;
         var prompts = new List<string>();
 
         for (var i = 0; i < args.Length; i++)
@@ -72,6 +75,12 @@ internal static class Program
                 case "--api-key" when i + 1 < args.Length:
                     apiKeyOverride = args[++i];
                     break;
+                case "--approve":
+                    approve = true;
+                    break;
+                case "--no-approve":
+                    noApprove = true;
+                    break;
                 case "--list-models":
                     ListModels();
                     return 0;
@@ -93,7 +102,7 @@ internal static class Program
                 Console.Error.WriteLine("Interactive mode requires an interactive terminal.");
                 return 1;
             }
-            return await InteractiveModeAsync(providerId, modelId, sessionRef, forkRef, continueLatest, noSession);
+            return await InteractiveModeAsync(providerId, modelId, sessionRef, forkRef, continueLatest, noSession, approve, noApprove);
         }
 
         if (!Console.IsInputRedirected && string.IsNullOrWhiteSpace(prompt))
@@ -119,7 +128,7 @@ internal static class Program
             return await PrintModeAsync(providerId, modelId, prompt, apiKeyOverride);
 
         if (agentMode)
-            return await AgentModeAsync(providerId, modelId, prompt, apiKeyOverride, sessionRef, forkRef, continueLatest, noSession);
+            return await AgentModeAsync(providerId, modelId, prompt, apiKeyOverride, sessionRef, forkRef, continueLatest, noSession, approve, noApprove);
 
         // No mode flag: default to one-shot print mode.
         return await PrintModeAsync(providerId, modelId, prompt, apiKeyOverride);
@@ -194,7 +203,9 @@ internal static class Program
         string? sessionRef,
         string? forkRef,
         bool continueLatest,
-        bool noSession)
+        bool noSession,
+        bool approve,
+        bool noApprove)
     {
         var registry = DefaultModelRegistry.Create();
         var chat = new ChatService(registry);
@@ -206,6 +217,7 @@ internal static class Program
         }
 
         using var cts = new CancellationTokenSource();
+        var (resolver, permissionPrompt) = await BuildPermissionsAsync(approve, noApprove, interactive: true, cts.Token);
         var loop = new InteractiveLoop(
             chat,
             new SessionManager(),
@@ -226,9 +238,30 @@ internal static class Program
                     e.Cancel = true;
                     turnCts.Cancel();
                 };
-            });
+            },
+            permissions: resolver,
+            permissionPrompt: permissionPrompt);
 
         return await loop.RunAsync(cts.Token);
+    }
+
+    /// <summary>
+    /// Builds the permission resolver + prompt for a run (spec 05 §3.7):
+    /// --approve auto-approves; non-interactive stdin falls back to deny-all.
+    /// </summary>
+    private static async Task<(RulePermissionResolver, IPermissionPrompt)> BuildPermissionsAsync(
+        bool approve, bool noApprove, bool interactive, CancellationToken ct)
+    {
+        var resolver = await RulePermissionResolver.LoadAsync(Environment.CurrentDirectory, ct);
+        if (noApprove)
+            resolver.AddSessionRule(new PermissionRule("bash", null, ToolPermission.Ask));
+
+        IPermissionPrompt prompt = approve
+            ? new AutoApprovePrompt()
+            : interactive
+                ? new ConsolePermissionPrompt(new ConsoleInput(), new ConsoleOutput())
+                : new DenyAllPrompt(Console.Error);
+        return (resolver, prompt);
     }
 
     private static async Task<int> AgentModeAsync(
@@ -239,7 +272,9 @@ internal static class Program
         string? sessionRef,
         string? forkRef,
         bool continueLatest,
-        bool noSession)
+        bool noSession,
+        bool approve,
+        bool noApprove)
     {
         var registry = DefaultModelRegistry.Create();
         var chat = new ChatService(registry);
@@ -286,9 +321,12 @@ internal static class Program
             Console.WriteLine($"[resumed with {initialMessages.Count} prior message(s)]");
         }
 
+        var (resolver, permissionPrompt) = await BuildPermissionsAsync(approve, noApprove, interactive: !Console.IsInputRedirected, cts.Token);
+
         var agent = new Agent(new AgentOptions
         {
             Runner = chat,
+            BeforeToolCall = PermissionGate.Create(resolver, permissionPrompt, cwd),
             InitialState = new AgentState
             {
                 SystemPrompt = CliConfig.DefaultSystemPrompt,
@@ -387,6 +425,8 @@ internal static class Program
           --fork <id|path>     Fork a session and continue from its active branch
           -c, --continue       Resume the most recent session for this directory
           --no-session         Disable session persistence
+          --approve            Auto-approve permission prompts for this run
+          --no-approve         Ask for permission even if config would allow (bash)
           --api-key <key>      API key (overrides env vars)
           --list-models        List available models
           -h, --help           Show this help
