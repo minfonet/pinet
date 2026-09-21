@@ -31,6 +31,7 @@ This folder contains all project documentation, written using the **Spec-Driven 
 | [03-stage-3-sessions.md](spec/03-stage-3-sessions.md) | 3 — Sessions (JSONL tree) | Verified |
 | [04-stage-4-interactive-loop.md](spec/04-stage-4-interactive-loop.md) | 4 — Interactive CLI Loop | Verified |
 | [05-stage-5-permissions.md](spec/05-stage-5-permissions.md) | 5 — Permissions & Tool Security | Verified |
+| [06-stage-6-extensions-skills.md](spec/06-stage-6-extensions-skills.md) | 6 — Extensions & Skills | Verified |
 
 ### Architecture Decision Records (adr/)
 
@@ -45,6 +46,13 @@ This folder contains all project documentation, written using the **Spec-Driven 
 | Doc | Topic |
 |-----|-------|
 | [permissions.md](permissions.md) | Permission rules, config files, `/trust`, `--approve`, container template |
+| [extensions.md](extensions.md) | Extensions, skills, prompt templates, context files, packages (`pinet install`) |
+
+### Scripts
+
+| Doc | Topic |
+|-----|-------|
+| [`../scripts/smoke-stage6.ps1`](../scripts/smoke-stage6.ps1) | Manual Stage 6 smoke test: `npm:`/`git:` installs and a real LLM invoking an extension tool |
 
 ## Conventions
 

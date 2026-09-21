@@ -1,6 +1,6 @@
 # PiNet — Project Status
 
-> Last updated: 2026-07-09
+> Last updated: 2026-09-21
 > Companion to [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md). Per-stage detail lives in
 > [`docs/spec/`](docs/spec/) (spec-driven development: spec written before code, then verified).
 
@@ -9,9 +9,9 @@
 | Item | State |
 |------|-------|
 | Solution | `PiNet.slnx` — builds clean (0 warnings, 0 errors) |
-| Tests | **167 passing** (47 `PiNet.Permissions.Tests` + 27 `PiNet.AgentCore.Tests` + 13 `PiNet.Sessions.Tests` + 80 `PiNet.Cli.Tests`), 0 failing |
-| Current stage | **Stage 6 — Extensions & Skills** (next) |
-| Stages complete | 1, 2, 3, 4, 5 (specs verified against the running CLI) |
+| Tests | **261 passing** (47 `PiNet.Permissions.Tests` + 27 `PiNet.AgentCore.Tests` + 13 `PiNet.Sessions.Tests` + 110 `PiNet.Cli.Tests` + 64 `PiNet.Extensions.Tests`), 0 failing |
+| Current stage | **Stage 7 — Advanced Features** (next) |
+| Stages complete | 1, 2, 3, 4, 5, 6 (specs verified against the running CLI) |
 | Packaging | Git repo initialized with `.gitignore`; CI/release not started (Stage 8) |
 
 ## Projects
@@ -22,15 +22,17 @@
 | `PiNet.Providers` | `ChatService` facade; OpenAI + Anthropic providers (raw HTTP + SSE, ADR-0001); `Faux` provider for deterministic tests; per-provider model catalogs | Done (Stage 1) |
 | `PiNet.AgentCore` | `Agent` loop (`PromptAsync`/`ContinueAsync`/`Abort`/`Subscribe`), `AgentEvent` lifecycle, parallel/sequential tool execution, `BeforeToolCall`/`AfterToolCall` hooks, `TransformContext`/`ConvertToLlm`, built-in tools (`read`, `write`, `edit`, `bash`) | Done (Stage 2) |
 | `PiNet.Sessions` | JSONL tree sessions (`Session`, `SessionEntry`, `SessionStore`, `SessionJson`), `SessionManager` (create/load/latest/list/fork, append watermark), `SessionCompactor` (LLM summarization) | Done (Stage 3) |
-| `PiNet.Cli` | Entry point: `-p/--print`, `--agent` one-shot, `--interactive/-i` loop, session flags (`--session`, `-c`, `--fork`, `--no-session`), `--list-models`, `--approve`/`--no-approve`; interactive layer: `LineEditor`, `LineHistory`, `SlashCommand` (incl. `/trust`), `AgentConsoleRenderer` (shared folding), `TurnRunner` (shared turn/persist), `InteractiveLoop`, `PermissionGate` + `ConsolePermissionPrompt` | Done (Stages 4–5) |
+| `PiNet.Cli` | Entry point: `-p/--print`, `--agent` one-shot, `--interactive/-i` loop, session flags (`--session`, `-c`, `--fork`, `--no-session`), `--list-models`, `--approve`/`--no-approve`, `install/list/remove/update` package subcommands, `--no-extensions`/`--no-skills`/`--no-prompt-templates`; interactive layer: `LineEditor`, `LineHistory`, `SlashCommand` (incl. `/trust`, `/skill:`), `AgentConsoleRenderer` (shared folding), `TurnRunner` (shared turn/persist), `InteractiveLoop`, `PermissionGate` + `ConsolePermissionPrompt`; `Extensions/` adapter + `CliEnvironment` setup | Done (Stages 4–6) |
 | `PiNet.Permissions` | Zero-project-reference permission layer: `ToolPermission`/`PermissionRule` + `Glob`, `RulePermissionResolver` (safety floor → deny-sticky → session→project→global → default), `PermissionConfig` (JSON load/save, `PI_NET_HOME`), `ToolPaths`, `IPermissionPrompt` (`AutoApprovePrompt`, `DenyAllPrompt`), `TrustStore` | Done (Stage 5) |
+| `PiNet.Extensions` | Extension host (source compiled with SDK Roslyn, cached by content hash) + `IExtension` model; skill registry (`~/.pinet/skills`, `~/.agents/skills`, `.pi/skills`, packages; frontmatter + `SkillCatalog`); prompt templates (+ `TemplateExpander`); context files (`SYSTEM.md`/`AGENTS.md`/`CLAUDE.md` → `SystemPromptBuilder`); tar extractor (zip-slip safe); `PackageManager` (`install/list/remove/update`, path/npm/git) | Done (Stage 6) |
 | `PiNet.AgentCore.Tests` | Loop, hooks, tool execution, built-in tools (scripted `IModelRunner`) | 27 passing |
 | `PiNet.Sessions.Tests` | Session tree, JSONL store, compactor | 13 passing |
 | `PiNet.Permissions.Tests` | Rule matching, resolution algorithm, config load/save/malformed, `PI_NET_HOME`, `TrustStore`, `ToolPaths` | 47 passing |
-| `PiNet.Cli.Tests` | Line editor, history, slash parser, renderer folding, full `InteractiveLoop` tests (scripted keys, `ScriptedProvider`, `HangingProvider`), and permission-gate AC1–AC4 tests (`PermissionGateTests`, `ToolCallScript`) | 80 passing |
+| `PiNet.Cli.Tests` | Line editor, history, slash parser (incl. `/skill:`), renderer folding, full `InteractiveLoop` tests (scripted keys, `ScriptedProvider`, `HangingProvider`), permission-gate AC1–AC4 tests (`PermissionGateTests`, `ToolCallScript`), plus `SlashSkillTests`, `ExtensionCommandTests`, `TemplateLoopTests`, `CliEnvironmentTests`, `PackageManagerCliTests` (Spec 06) | 110 passing |
+| `PiNet.Extensions.Tests` | Skill frontmatter/registry/catalog, template expander/registry, context files + system prompt builder, tar extractor, package manager, extension host (incl. real SDK compile + cache reuse) | 64 passing |
 
-Not yet created (later stages): `PiNet.Extensions` (6),
-steering/follow-up + advanced features (7), packaging/CI (8).
+Not yet created (later stages): steering/follow-up + advanced features (7),
+packaging/CI (8).
 
 ## Stage-by-stage
 
@@ -89,24 +91,55 @@ All acceptance criteria checked off (evidence in spec §7 verification log):
 - [x] AC3: `--approve` bypasses prompts (denies still apply); non-interactive stdin denies with notice
 - [x] AC4: path-scoped deny (`secrets/*`) blocks matching writes only; out-of-cwd writes always blocked
 
-### Stages 6–8 — ⬜ not started
-Extensions/skills (6), steering/follow-up + compaction polish (7),
-packaging/CI/release (8). See `IMPLEMENTATION_PLAN.md`.
+### Stage 6 — Extensions & Skills — ✅ verified
+Spec [`docs/spec/06`](docs/spec/06-stage-6-extensions-skills.md) marked *Verified*
+(2026-09-21). New zero-NuGet `PiNet.Extensions` project (pure BCL +
+`System.Text.Json`) that references no other Pi project.
+
+Implemented:
+- Extension host: plain C# sources compiled at startup with the SDK's
+  `csc.dll` (versioned SDK path, refs from `Microsoft.NETCore.App.Ref` +
+  `PiNet.Extensions`/`PiNet.Abstractions`), cached by content hash in
+  `~/.pinet/cache/extensions/`; `IExtension` model (tools + slash commands);
+  startup `LoadInMemory` for tests; `--no-extensions`
+- Skills: `~/.pinet/skills`, shared `~/.agents/skills` (agents convention:
+  root `.md` ignored, nested picked), `.pi/skills` + `.agents/skills` ancestor
+  walk, package `skills/`; frontmatter (`name`, `description`,
+  `disable-model-invocation`); `/skill:<name> [args]` dispatch;
+  `SkillCatalog` XML block injected into the system prompt; `--no-skills`
+- Prompt templates: global + project `.pi/prompts`; `TemplateExpander`
+  (`$1`/`$@`/`$ARGUMENTS`/`$0`, `${1:-default}`, slices, unknown `$X` kept);
+  `/name args` expands into the editor buffer; `--no-prompt-templates`
+- Context files: `SYSTEM.md` (replaces base), `APPEND_SYSTEM.md`, `AGENTS.md`
+  (nearest ancestor), `CLAUDE.md` fallback → composed system prompt
+- Package manager: `pinet install <path|npm:<pkg>|git:<url>>`, `list`, `remove`,
+  `update`; `~/.pinet/packages.json` index; safe tar extraction (zip-slip,
+  empty-name, absolute-path and `C:`-drive rejection)
+- `docs/extensions.md` — extensions/skills/templates/packages reference
+
+All acceptance criteria checked off (evidence in spec §7/§8 verification log);
+manual smoke (`npm:`/`git:` installs, extension tool invoked by a real LLM) is
+deferred to a networked machine.
+
+### Stages 7–8 — ⬜ not started
+Steering/follow-up + compaction polish (7), packaging/CI/release (8).
+See `IMPLEMENTATION_PLAN.md`.
 
 ## Known issues / next steps
 
-1. **Stage 6 — Extensions & Skills** (next): write spec `06` before coding (SDD),
-   then implement the `PiNet.Extensions` project. See `IMPLEMENTATION_PLAN.md`.
-2. **Stage 5 done** (2026-07-09): `PiNet.Permissions` + CLI gate + `/trust` +
-   `--approve`/`--no-approve` implemented and verified (167 tests passing);
-   `docs/permissions.md` delivered.
-3. Later: packaging/CI/release (Stage 8), steering/follow-up + compaction polish (Stage 7).
+1. **Stage 7 — Advanced Features** (next): steering/follow-up + compaction
+   polish. See `IMPLEMENTATION_PLAN.md`.
+2. **Stage 6 done** (2026-09-21): `PiNet.Extensions` (extensions, skills,
+   templates, context files, packages) wired into the CLI and verified
+   (261 tests passing). Manual smoke tests (`pinet install npm:/git:`, real
+   LLM invoking an extension tool) still to run on a networked machine.
+3. Later: packaging/CI/release (Stage 8).
 
 ## Verification commands
 
 ```bash
 dotnet build PiNet.slnx        # 0 warnings, 0 errors
-dotnet test PiNet.slnx         # 167/167 passing
+dotnet test PiNet.slnx         # 261/261 passing
 dotnet run --project src/PiNet.Cli -- --list-models
 dotnet run --project src/PiNet.Cli -- --provider faux --model faux-model -p "hi"
 ```

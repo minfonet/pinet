@@ -25,23 +25,45 @@ The original Pi project (TypeScript/Node.js) is structured as a monorepo with th
 
 ---
 
+## Current Progress
+
+> Live status lives in [`STATUS.md`](STATUS.md). This section summarizes what is
+> done as of the latest commit; each stage heading below carries its own marker.
+
+| Stage | Status |
+|-------|--------|
+| 1 — Foundation & Unified LLM | [DONE] verified (spec `docs/spec/01`) |
+| 2 — Agent Core | [DONE] verified (spec `docs/spec/02`) |
+| 3 — Sessions | [DONE] verified (spec `docs/spec/03`) |
+| 4 — Interactive CLI & TUI | [DONE] verified (spec `docs/spec/04`) |
+| 5 — Permissions & Tool Security | [DONE] verified (spec `docs/spec/05`) |
+| 6 — Extensions & Skills | [DONE] verified (spec `docs/spec/06`) |
+| 7 — Advanced Features | [NEXT] |
+| 8 — Polish, Packaging & Release | [PENDING] |
+
+Verified baseline: `dotnet build PiNet.slnx` clean (0 warnings / 0 errors);
+`dotnet test PiNet.slnx` — 261 passing (47 Permissions + 27 AgentCore + 13
+Sessions + 110 Cli + 64 Extensions).
+
+---
+
 ## Technology Stack (.NET 10)
 
 | Concern | Library / Approach |
 |---------|--------------------|
-| LLM clients | `Microsoft.Agents.AI` + provider-specific SDKs (`OpenAI`, `Anthropic.SDK`, `Google.Apis.GenerativeLanguage.V1`), or raw HTTP via `HttpClient` for custom providers |
-| Agent harness | `Microsoft.Agents.AI.AIAgent` + custom `AgentLoop` (inspired by Pi's agent-core) |
-| Tool definitions | JSON Schema via `JsonSchemaExporter` / `System.Text.Json.Serialization.Metadata` |
+| LLM clients | Raw REST/SSE via `HttpClient` + `SseParser` mapping to the `StreamEvent` union (ADR-0001; no vendor SDKs) |
+| Agent harness | Custom `AgentLoop` in `PiNet.AgentCore` (inspired by pi's agent-core); no `Microsoft.Agents.AI` |
+| Tool definitions | JSON Schema via custom `ToolParameterSchema` (`System.Text.Json` source generated) |
 | Serialization | `System.Text.Json` with source generators |
-| Terminal UI | [Spectre.Console](https://spectreconsole.net/) (rich TUI: tables, progress, prompts, markdown rendering) |
-| Plugin/extension system | `System.Composition` (MEF2) or custom `IExtension` interface with runtime discovery |
+| Terminal UI | Zero-dependency raw `System.Console` scrolling loop + `ReadKey` (ADR decision in Stage 4; no Spectre.Console) |
+| Plugin/extension system | C# source files compiled at startup with the SDK Roslyn compiler (`csc.dll`) — spec `docs/spec/06`; no MEF2 |
 | Session persistence | JSONL files via `System.Text.Json` streaming (Utf8JsonWriter/Utf8JsonReader) |
-| Testing | xUnit + FluentAssertions + Moq |
-| Build | .NET 10 solution with separate class library projects per concern |
+| Testing | xUnit + `Microsoft.NET.Test.Sdk` |
+| Build | .NET 10 solution (`PiNet.slnx`) with separate class library / test projects per concern |
 
 ---
 
-## Stage 1 — Foundation & Unified LLM Abstraction
+## Stage 1 — Foundation & Unified LLM Abstraction — [DONE] verified
 
 **Goal:** A working console app that can talk to at least two LLM providers through a unified interface.
 
@@ -71,7 +93,7 @@ The original Pi project (TypeScript/Node.js) is structured as a monorepo with th
 
 ---
 
-## Stage 2 — Agent Core: Tool-Calling Loop
+## Stage 2 — Agent Core: Tool-Calling Loop — [DONE] verified
 
 **Goal:** An autonomous agent loop that can call tools and iterate until the model stops.
 
@@ -102,7 +124,7 @@ The original Pi project (TypeScript/Node.js) is structured as a monorepo with th
 
 ---
 
-## Stage 3 — Session Management (JSONL Tree)
+## Stage 3 — Session Management (JSONL Tree) — [DONE] verified
 
 **Goal:** Persistent sessions with branching, compaction, fork, and resume.
 
@@ -138,7 +160,7 @@ The original Pi project (TypeScript/Node.js) is structured as a monorepo with th
 
 ---
 
-## Stage 4 — Interactive CLI & Terminal UI
+## Stage 4 — Interactive CLI & Terminal UI — [DONE] verified
 
 **Goal:** A polished interactive terminal experience.
 
@@ -185,7 +207,7 @@ The original Pi project (TypeScript/Node.js) is structured as a monorepo with th
 
 ---
 
-## Stage 5 — Permissions & Tool Security
+## Stage 5 — Permissions & Tool Security — [DONE] verified
 
 **Goal:** Configurable permission gates for destructive tools.
 
@@ -219,46 +241,56 @@ The original Pi project (TypeScript/Node.js) is structured as a monorepo with th
 
 ---
 
-## Stage 6 — Extension System & Skills
+## Stage 6 — Extension System & Skills — [DONE] verified
 
 **Goal:** A plugin architecture for community extensions, skills, and prompt templates.
 
-### Deliverables
+Delivered (spec `docs/spec/06`, verified 2026-09-21; see `docs/extensions.md`):
 
-- `PiNet.Extensions` project
+- `PiNet.Extensions` project (zero NuGet, no references to other Pi projects)
 - Extension system:
-  - `IExtension` interface: `Register(Agent agent, ExtensionContext ctx)`
-  - Runtime discovery from `~/.pinet/extensions/`, `.pi/extensions/`
-  - Extensions can register: tools, commands, keyboard shortcuts, event handlers, UI widgets
-  - Extension lifecycle: load → register → activate → dispose
+  - `IExtension` interface: `Register(IExtensionContext ctx)` (+ tools as
+    `ExtensionToolSpec`, slash commands, `IExtensionCommandContext`)
+  - Runtime discovery from `~/.pinet/extensions/`, `.pi/extensions/`, packages
+  - Extensions register tools + slash commands (`--no-extensions` disables)
+  - Extensions compiled at startup with the SDK's `csc.dll`; content-hash cache
+    in `~/.pinet/cache/extensions/`; lifecycle: load → register → dispose
 - Skill system:
-  - `Skill` model: `Name`, `Description`, `Steps[]` (Markdown-based)
-  - Discovery from `~/.pinet/skills/`, `.pi/skills/`, `~/.agents/skills/`
-  - Invoked via `/skill:name` or auto-loaded by agent
-  - Follows [Agent Skills standard](https://agentskills.io)
+  - `Skill` model: `Name`, `Description`, body (frontmatter Markdown)
+  - Discovery from `~/.pinet/skills/`, `~/.agents/skills/`, `.pi/skills/` +
+    ancestor walk, packages (`--no-skills` disables)
+  - Invoked via `/skill:<name>`; loadable skills listed in the system prompt
+    (agentskills-style `<available_skills>` XML; `disable-model-invocation` supported)
 - Prompt templates:
-  - Markdown files with `{{variable}}` placeholders
-  - Discovery from `~/.pinet/prompts/`, `.pi/prompts/`
-  - Expanded via `/templatename` in editor
+  - Markdown files with `$1`/`$@`/`${var:-default}` placeholders
+  - Discovery from `~/.pinet/prompts/`, `.pi/prompts/`, packages
+    (`--no-prompt-templates` disables)
+  - Expanded via `/templatename [args]` then Enter in the editor
 - Package management:
-  - `pinet install npm:<package>` / `pinet install git:<url>`
-  - `pinet remove`, `pinet list`, `pinet update`
-  - Packages bundle extensions + skills + prompts + themes
+  - `pinet install <path|npm:<pkg>|git:<url>>`, `remove`, `list`, `update`
+  - Packages bundle extensions + skills + prompts; `~/.pinet/packages.json` index
 - Context files:
-  - Load `AGENTS.md` / `CLAUDE.md` from cwd and parent directories
-  - `SYSTEM.md` to override default system prompt
-  - `APPEND_SYSTEM.md` to append
+  - Load `AGENTS.md` / `CLAUDE.md` from cwd and ancestors
+  - `SYSTEM.md` to override the default system prompt; `APPEND_SYSTEM.md` to append
 
-### Acceptance Criteria
+### Acceptance Criteria (verified)
 
-- Write a custom tool extension, place in `~/.pinet/extensions/`, agent picks it up on restart
-- Create a skill markdown file, invoke with `/skill:my-skill`, agent follows its steps
-- Create a prompt template, expand with `/review`, variables are filled from user input
-- `pinet install npm:@example/my-tools` installs and activates the package
+- [x] Custom tool extension in `~/.pinet/extensions/` is picked up on restart
+      (compile + load covered by `ExtensionHostTests`; tool reaches
+      `ChatRequest.Tools` via `ExtensionToolAdapter`)
+- [x] Skill markdown file invoked with `/skill:my-skill` sends its steps as a
+      turn (`SlashSkillTests`)
+- [x] Prompt template expanded with `/review`; variables filled from user input
+      (`TemplateLoopTests`, `TemplateExpanderTests`)
+- [x] `pinet install` for a path/`npm:`-style source installs and activates a
+      package (`PackageManagerTests`, `PackageManagerCliTests`)
+
+Manual smoke (network) pending: `install npm:<pkg>`/`git:<url>` on a real
+machine and an extension tool invoked end-to-end by a real LLM.
 
 ---
 
-## Stage 7 — Advanced Features
+## Stage 7 — Advanced Features — [PENDING]
 
 **Goal:** Feature parity with Pi's advanced capabilities.
 
@@ -299,7 +331,7 @@ The original Pi project (TypeScript/Node.js) is structured as a monorepo with th
 
 ---
 
-## Stage 8 — Polish, Packaging & Release
+## Stage 8 — Polish, Packaging & Release — [PENDING]
 
 **Goal:** Production-ready release with documentation and CI/CD.
 
@@ -348,20 +380,18 @@ pinet/
 │   ├── PiNet.Providers/             # LLM provider implementations
 │   ├── PiNet.AgentCore/             # Agent loop, tool execution, events
 │   ├── PiNet.Sessions/              # JSONL session management
-│   ├── PiNet.Tui/                   # Spectre.Console terminal UI
+│   ├── PiNet.Tui/                   # [deferred] terminal UI lives in PiNet.Cli/Interact
 │   ├── PiNet.Permissions/           # Permission gates and policies
-│   ├── PiNet.Extensions/            # Extension/skill/prompt discovery
-│   └── PiNet.Cli/                   # Console app entry point
-├── tests/
-│   ├── PiNet.Abstractions.Tests/
-│   ├── PiNet.Providers.Tests/
-│   ├── PiNet.AgentCore.Tests/
-│   ├── PiNet.Sessions.Tests/
-│   └── PiNet.Cli.Tests/
-├── docs/
-├── .github/workflows/
-├── PiNet.sln
-└── README.md
+│   ├── PiNet.Extensions/            # [Stage 6] extension/skill/prompt discovery
+│   ├── PiNet.Cli/                   # Console app entry point (incl. interactive layer)
+│   ├── PiNet.AgentCore.Tests/       # 27 tests
+│   ├── PiNet.Sessions.Tests/        # 13 tests
+│   ├── PiNet.Permissions.Tests/     # 47 tests
+│   └── PiNet.Cli.Tests/             # 80 tests
+├── docs/                            # specs (01–06), ADRs, guides
+├── .github/workflows/               # [Stage 8]
+├── PiNet.slnx
+└── README.md                        # [Stage 8]
 ```
 
 ---
@@ -370,19 +400,16 @@ pinet/
 
 | Package | Purpose |
 |---------|---------|
-| `Microsoft.Agents.AI` | Agent Framework abstractions |
-| `OpenAI` | OpenAI official SDK |
-| `Anthropic.SDK` | Anthropic API client |
-| `Google.Apis.GenerativeLanguage.V1` | Gemini API |
-| `Spectre.Console` | Rich terminal UI |
-| `Spectre.Console.Cli` | CLI command parsing |
+| (none) — raw `HttpClient` | All provider protocol endpoints (ADR-0001); no vendor SDKs |
+| `xunit` / `xunit.runner.visualstudio` | Testing framework (test projects only) |
+| `Microsoft.NET.Test.Sdk` | Test host (test projects only) |
 | `System.Text.Json` | Serialization (built-in) |
-| `System.Composition` | MEF2 for extension discovery |
-| `Microsoft.Extensions.Logging` | Structured logging |
-| `Microsoft.Extensions.Configuration` | Settings management |
-| `xUnit` | Testing framework |
-| `FluentAssertions` | Test assertions |
-| `Moq` | Mocking |
+| `Microsoft.Extensions.Logging` | Structured logging (planned) |
+| `Microsoft.Extensions.Configuration` | Settings management (planned, Stage 7) |
+
+All runtime projects (`Abstractions`, `Providers`, `AgentCore`, `Sessions`,
+`Permissions`, `Cli`) currently use zero NuGet packages; only the test projects
+reference `xunit` + `Microsoft.NET.Test.Sdk`.
 
 ---
 
@@ -390,11 +417,11 @@ pinet/
 
 | Risk | Mitigation |
 |------|------------|
-| .NET 10 SDK not stable yet | Target `net10.0` but keep compatibility with `net9.0` via multi-targeting |
-| Provider API rate limits / breaking changes | Abstract behind `IChatProvider`; pin SDK versions |
-| Spectre.Console limitations for complex TUI | Prototype interactive mode early (Stage 4); fallback to raw `System.Console` |
-| Cross-platform terminal differences | Test on Windows Terminal, iTerm2, GNOME Terminal; use Spectre's platform detection |
-| MEF2 performance for extension loading | Lazy loading + cached discovery; benchmark early |
+| .NET 10 SDK stability | Target `net10.0` (GA); no multi-targeting needed |
+| Provider API rate limits / breaking changes | Abstract behind `IChatProvider`; raw HTTP keeps wire changes bounded (ADR-0001) |
+| Terminal portability (raw console) | Zero-dependency `ReadKey` loop; test on Windows Terminal, iTerm2, GNOME Terminal |
+| Cross-platform terminal differences | Test on Windows Terminal, iTerm2, GNOME Terminal; platform detection where needed |
+| Extension compilation weight at startup | Content-hash caching (`~/.pinet/cache/extensions/`) + best-effort non-fatal loading (spec 06) |
 
 ---
 

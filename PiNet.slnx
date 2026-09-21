@@ -7,6 +7,8 @@
     <Project Path="src/PiNet.Sessions/PiNet.Sessions.csproj" />
     <Project Path="src/PiNet.Permissions/PiNet.Permissions.csproj" />
     <Project Path="src/PiNet.Permissions.Tests/PiNet.Permissions.Tests.csproj" />
+    <Project Path="src/PiNet.Extensions/PiNet.Extensions.csproj" />
+    <Project Path="src/PiNet.Extensions.Tests/PiNet.Extensions.Tests.csproj" />
   </Folder>
   <Project Path="src/PiNet.Abstractions/PiNet.Abstractions.csproj" />
   <Project Path="src/PiNet.Cli/PiNet.Cli.csproj" />

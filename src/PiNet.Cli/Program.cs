@@ -2,7 +2,9 @@
 using PiNet.Abstractions.Streaming;
 using PiNet.AgentCore;
 using PiNet.AgentCore.Tools;
+using PiNet.Cli.Extensions;
 using PiNet.Cli.Interact;
+using PiNet.Extensions;
 using PiNet.Permissions;
 using PiNet.Providers;
 using PiNet.Sessions;
@@ -27,6 +29,9 @@ internal static class Program
 
     private static async Task<int> RunAsync(string[] args)
     {
+        if (args.Length > 0 && IsPackageSubcommand(args[0]))
+            return await PackageCommands.RunAsync(args[1..]);
+
         var providerId = "openai";
         var modelId = "gpt-4o-mini";
         var printMode = false;
@@ -39,6 +44,9 @@ internal static class Program
         string? apiKeyOverride = null;
         var approve = false;
         var noApprove = false;
+        var noExtensions = false;
+        var noSkills = false;
+        var noTemplates = false;
         var prompts = new List<string>();
 
         for (var i = 0; i < args.Length; i++)
@@ -81,6 +89,15 @@ internal static class Program
                 case "--no-approve":
                     noApprove = true;
                     break;
+                case "--no-extensions":
+                    noExtensions = true;
+                    break;
+                case "--no-skills":
+                    noSkills = true;
+                    break;
+                case "--no-prompt-templates":
+                    noTemplates = true;
+                    break;
                 case "--list-models":
                     ListModels();
                     return 0;
@@ -102,7 +119,7 @@ internal static class Program
                 Console.Error.WriteLine("Interactive mode requires an interactive terminal.");
                 return 1;
             }
-            return await InteractiveModeAsync(providerId, modelId, sessionRef, forkRef, continueLatest, noSession, approve, noApprove);
+            return await InteractiveModeAsync(providerId, modelId, sessionRef, forkRef, continueLatest, noSession, approve, noApprove, noExtensions, noSkills, noTemplates);
         }
 
         if (!Console.IsInputRedirected && string.IsNullOrWhiteSpace(prompt))
@@ -125,16 +142,26 @@ internal static class Program
         }
 
         if (printMode)
-            return await PrintModeAsync(providerId, modelId, prompt, apiKeyOverride);
+            return await PrintModeAsync(providerId, modelId, prompt, apiKeyOverride, noExtensions, noSkills, noTemplates);
 
         if (agentMode)
-            return await AgentModeAsync(providerId, modelId, prompt, apiKeyOverride, sessionRef, forkRef, continueLatest, noSession, approve, noApprove);
+            return await AgentModeAsync(providerId, modelId, prompt, apiKeyOverride, sessionRef, forkRef, continueLatest, noSession, approve, noApprove, noExtensions, noSkills, noTemplates);
 
         // No mode flag: default to one-shot print mode.
-        return await PrintModeAsync(providerId, modelId, prompt, apiKeyOverride);
+        return await PrintModeAsync(providerId, modelId, prompt, apiKeyOverride, noExtensions, noSkills, noTemplates);
     }
 
-    private static async Task<int> PrintModeAsync(string providerId, string modelId, string prompt, string? apiKeyOverride)
+    private static bool IsPackageSubcommand(string arg) =>
+        arg is "install" or "list" or "remove" or "update";
+
+    private static async Task<int> PrintModeAsync(
+        string providerId,
+        string modelId,
+        string prompt,
+        string? apiKeyOverride,
+        bool noExtensions = false,
+        bool noSkills = false,
+        bool noTemplates = false)
     {
         var registry = DefaultModelRegistry.Create();
         var chat = new ChatService(registry);
@@ -153,12 +180,15 @@ internal static class Program
             cts.Cancel();
         };
 
+        var setup = await CliEnvironment.LoadAsync(Environment.CurrentDirectory, noExtensions, noSkills, noTemplates, cts.Token);
+        PrintWarnings(setup);
+
         var messages = new List<PiNet.Abstractions.Chat.ChatMessage>
         {
             PiNet.Abstractions.Chat.ChatMessage.User(prompt)
         };
 
-        await foreach (var evt in chat.GenerateAsync(providerId, modelId, CliConfig.DefaultSystemPrompt, messages, ct: cts.Token))
+        await foreach (var evt in chat.GenerateAsync(providerId, modelId, setup.SystemPrompt, messages, ct: cts.Token))
         {
             switch (evt)
             {
@@ -205,7 +235,10 @@ internal static class Program
         bool continueLatest,
         bool noSession,
         bool approve,
-        bool noApprove)
+        bool noApprove,
+        bool noExtensions,
+        bool noSkills,
+        bool noTemplates)
     {
         var registry = DefaultModelRegistry.Create();
         var chat = new ChatService(registry);
@@ -218,6 +251,8 @@ internal static class Program
 
         using var cts = new CancellationTokenSource();
         var (resolver, permissionPrompt) = await BuildPermissionsAsync(approve, noApprove, interactive: true, cts.Token);
+        var setup = await CliEnvironment.LoadAsync(Environment.CurrentDirectory, noExtensions, noSkills, noTemplates, cts.Token);
+        PrintWarnings(setup);
         var loop = new InteractiveLoop(
             chat,
             new SessionManager(),
@@ -240,9 +275,19 @@ internal static class Program
                 };
             },
             permissions: resolver,
-            permissionPrompt: permissionPrompt);
+            permissionPrompt: permissionPrompt,
+            extensions: setup.Extensions,
+            skills: setup.Skills,
+            templates: setup.Templates,
+            systemPrompt: setup.SystemPrompt);
 
         return await loop.RunAsync(cts.Token);
+    }
+
+    private static void PrintWarnings(CliSetup setup)
+    {
+        foreach (var warning in CliEnvironment.Warnings(setup))
+            WriteColoredLine(warning, ConsoleColor.DarkGray);
     }
 
     /// <summary>
@@ -274,7 +319,10 @@ internal static class Program
         bool continueLatest,
         bool noSession,
         bool approve,
-        bool noApprove)
+        bool noApprove,
+        bool noExtensions,
+        bool noSkills,
+        bool noTemplates)
     {
         var registry = DefaultModelRegistry.Create();
         var chat = new ChatService(registry);
@@ -322,6 +370,20 @@ internal static class Program
         }
 
         var (resolver, permissionPrompt) = await BuildPermissionsAsync(approve, noApprove, interactive: !Console.IsInputRedirected, cts.Token);
+        var setup = await CliEnvironment.LoadAsync(cwd, noExtensions, noSkills, noTemplates, cts.Token);
+        PrintWarnings(setup);
+
+        var tools = new List<AgentTool>(BuiltInTools.All());
+        if (setup.Extensions is not null)
+        {
+            var warnings = new List<string>();
+            tools.AddRange(ExtensionToolAdapter.BuildAll(
+                tools.Select(t => t.Name).ToArray(),
+                setup.Extensions.Tools,
+                warnings));
+            foreach (var warning in warnings)
+                WriteColoredLine(warning, ConsoleColor.DarkGray);
+        }
 
         var agent = new Agent(new AgentOptions
         {
@@ -329,10 +391,10 @@ internal static class Program
             BeforeToolCall = PermissionGate.Create(resolver, permissionPrompt, cwd),
             InitialState = new AgentState
             {
-                SystemPrompt = CliConfig.DefaultSystemPrompt,
+                SystemPrompt = setup.SystemPrompt,
                 ProviderId = providerId,
                 ModelId = modelId,
-                Tools = BuiltInTools.All(),
+                Tools = tools,
                 Messages = initialMessages
             }
         });
@@ -409,11 +471,15 @@ internal static class Program
     private static void PrintHelp()
     {
         Console.WriteLine("""
-        Pi.NET — terminal coding harness (Stage 1)
+        Pi.NET — terminal coding harness (Stage 6)
 
         Usage:
           pinet --provider <provider> --model <model> -p "your prompt"
           cat file.txt | pinet -p "Summarize this"
+          pinet install <path|npm:<pkg>|git:<url>>
+          pinet list
+          pinet remove <name>
+          pinet update [name]
 
         Options:
           --provider <name>    Provider id (openai, anthropic, faux)
@@ -427,6 +493,9 @@ internal static class Program
           --no-session         Disable session persistence
           --approve            Auto-approve permission prompts for this run
           --no-approve         Ask for permission even if config would allow (bash)
+          --no-extensions      Disable extension discovery
+          --no-skills          Disable skill discovery
+          --no-prompt-templates Disable prompt template discovery
           --api-key <key>      API key (overrides env vars)
           --list-models        List available models
           -h, --help           Show this help

@@ -1,6 +1,8 @@
 using PiNet.Abstractions.Chat;
 using PiNet.AgentCore;
 using PiNet.AgentCore.Tools;
+using PiNet.Cli.Extensions;
+using PiNet.Extensions;
 using PiNet.Permissions;
 using PiNet.Providers;
 using PiNet.Sessions;
@@ -17,6 +19,12 @@ public sealed class InteractiveLoop
     private readonly Action<CancellationTokenSource>? _turnCancellation;
     private readonly IPermissionResolver? _permissions;
     private readonly IPermissionPrompt? _permissionPrompt;
+    private readonly ExtensionHost? _extensions;
+    private readonly SkillRegistry? _skills;
+    private readonly IReadOnlyList<PromptTemplate> _templates;
+    private readonly string? _systemPrompt;
+    private readonly IReadOnlyList<AgentTool> _agentTools;
+    private readonly List<string> _extensionWarnings;
 
     private readonly LineEditor _editor = new();
     private readonly LineHistory _history = new();
@@ -43,7 +51,11 @@ public sealed class InteractiveLoop
         bool continueLatest = false,
         Action<CancellationTokenSource>? turnCancellation = null,
         IPermissionResolver? permissions = null,
-        IPermissionPrompt? permissionPrompt = null)
+        IPermissionPrompt? permissionPrompt = null,
+        ExtensionHost? extensions = null,
+        SkillRegistry? skills = null,
+        IReadOnlyList<PromptTemplate>? templates = null,
+        string? systemPrompt = null)
     {
         _chat = chat;
         _manager = manager;
@@ -59,6 +71,12 @@ public sealed class InteractiveLoop
         _turnCancellation = turnCancellation;
         _permissions = permissions;
         _permissionPrompt = permissionPrompt;
+        _extensions = extensions;
+        _skills = skills;
+        _templates = templates ?? [];
+        _systemPrompt = systemPrompt;
+        _extensionWarnings = [];
+        _agentTools = AdaptExtensionTools();
     }
 
     private bool NoSession { get; }
@@ -66,12 +84,25 @@ public sealed class InteractiveLoop
     private string? ForkRef { get; }
     private bool ContinueLatest { get; }
 
+    private IReadOnlyList<AgentTool> AdaptExtensionTools()
+    {
+        if (_extensions is null || _extensions.Tools.Count == 0)
+            return [];
+        var builtInNames = BuiltInTools.All().Select(t => t.Name).ToArray();
+        var warnings = new List<string>();
+        var tools = ExtensionToolAdapter.BuildAll(builtInNames, _extensions.Tools, warnings);
+        var list = (List<string>)_extensionWarnings;
+        list.AddRange(warnings);
+        return tools;
+    }
+
     public void CancelTurn() => _activeTurn?.Cancel();
 
     public async Task<int> RunAsync(CancellationToken hostCt = default)
     {
         var seed = await StartupAsync(hostCt);
         RebuildAgent(_provider, _model, seed);
+        PrintWarnings();
 
         while (!hostCt.IsCancellationRequested)
         {
@@ -174,6 +205,9 @@ public sealed class InteractiveLoop
     {
         _runner?.Dispose();
 
+        var tools = new List<AgentTool>(BuiltInTools.All());
+        tools.AddRange(_agentTools);
+
         _agent = new Agent(new AgentOptions
         {
             Runner = _chat,
@@ -182,10 +216,10 @@ public sealed class InteractiveLoop
                 : null,
             InitialState = new AgentState
             {
-                SystemPrompt = CliConfig.DefaultSystemPrompt,
+                SystemPrompt = _systemPrompt ?? CliConfig.DefaultSystemPrompt,
                 ProviderId = providerId,
                 ModelId = modelId,
-                Tools = BuiltInTools.All(),
+                Tools = tools,
                 Messages = new List<ChatMessage>(messages)
             }
         });
@@ -194,6 +228,18 @@ public sealed class InteractiveLoop
         if (_session is not null)
             _runner.AttachSession(_session);
         _runner.AgentEventSink += RenderEventAsync;
+    }
+
+    private void PrintWarnings()
+    {
+        if (_extensions is not null)
+            foreach (var warning in _extensions.Warnings)
+                _out.WriteLine(warning, ConsoleColor.DarkGray);
+        foreach (var warning in _extensionWarnings)
+            _out.WriteLine(warning, ConsoleColor.DarkGray);
+        if (_skills is not null)
+            foreach (var warning in _skills.Warnings)
+                _out.WriteLine(warning, ConsoleColor.DarkGray);
     }
 
     private string Prompt() => $"{_provider}/{_model} > ";
@@ -240,11 +286,62 @@ public sealed class InteractiveLoop
             case SlashCommandKind.Trust:
                 await TrustProjectAsync(command.Arg, hostCt);
                 return true;
-            default:
-                _out.WriteLine($"Unknown command: /{command.Name}", ConsoleColor.Red);
+            case SlashCommandKind.Skill:
+                await DispatchSkillAsync(command.Name, command.Arg, hostCt);
                 return true;
+            default:
+                return await DispatchExtensionishAsync(command.Name, command.Arg, hostCt);
         }
     }
+
+    private async Task DispatchSkillAsync(string name, string? args, CancellationToken hostCt)
+    {
+        if (_skills is null)
+        {
+            _out.WriteLine("Skills are disabled.", ConsoleColor.Red);
+            return;
+        }
+        var skill = _skills.Find(name);
+        if (skill is null)
+        {
+            _out.WriteLine($"Unknown skill: {name} (see /help)", ConsoleColor.Red);
+            return;
+        }
+
+        var body = SkillFrontmatter.ReadBody(skill.Path);
+        var prompt = $"[Skill: {skill.Name} — {skill.Path}]{Environment.NewLine}{body}";
+        if (!string.IsNullOrWhiteSpace(args))
+            prompt += $"{Environment.NewLine}{Environment.NewLine}User: {args}";
+        await RunTurnAsync(prompt, hostCt);
+    }
+
+    private async Task<bool> DispatchExtensionishAsync(string name, string? args, CancellationToken hostCt)
+    {
+        if (_extensions is not null && _extensions.Commands.TryGetValue(name, out var handler))
+        {
+            var queued = new List<string>();
+            var ctx = new LoopCommandContext(_out, queued.Add);
+            await handler(args ?? string.Empty, ctx);
+            foreach (var prompt in queued)
+                await RunTurnAsync(prompt, hostCt);
+            return true;
+        }
+
+        var template = _templates.FirstOrDefault(t => string.Equals(t.Name, name, StringComparison.OrdinalIgnoreCase));
+        if (template is not null)
+        {
+            var expanded = TemplateExpander.Expand(template, SplitArgs(args));
+            _editor.SetBuffer(expanded);
+            _out.WriteLine($"(template /{template.Name}: press Enter to send)", ConsoleColor.DarkGray);
+            return true;
+        }
+
+        _out.WriteLine($"Unknown command: /{name} (see /help)", ConsoleColor.Red);
+        return true;
+    }
+
+    private static IReadOnlyList<string> SplitArgs(string? args) =>
+        string.IsNullOrWhiteSpace(args) ? [] : args.Split(' ', StringSplitOptions.RemoveEmptyEntries);
 
     private void StartEphemeral()
     {
@@ -435,6 +532,34 @@ public sealed class InteractiveLoop
         _out.WriteLine("  /fork <id|path>        fork a session and continue it");
         _out.WriteLine("  /model <provider>/<id> switch models");
         _out.WriteLine("  /trust [off]           trust this project (bash without prompt) / untrust");
+
+        if (_extensions is not null && _extensions.Commands.Count > 0)
+        {
+            _out.WriteLine("Extension commands:");
+            foreach (var name in _extensions.Commands.Keys.OrderBy(k => k, StringComparer.Ordinal))
+                _out.WriteLine($"  /{name}                  [extension]");
+        }
+
+        if (_skills is not null && _skills.Skills.Count > 0)
+        {
+            _out.WriteLine("Skills:");
+            foreach (var skill in _skills.Skills.OrderBy(s => s.Name, StringComparer.Ordinal))
+                _out.WriteLine($"  /skill:{skill.Name}        {skill.Description}  [skill]");
+        }
+
+        if (_templates.Count > 0)
+        {
+            _out.WriteLine("Templates:");
+            foreach (var template in _templates.OrderBy(t => t.Name, StringComparer.Ordinal))
+                _out.WriteLine($"  /{template.Name} {template.ArgumentHint}  {template.Description}  [template]");
+        }
+    }
+
+    private sealed class LoopCommandContext(IConsoleOutput output, Action<string> queue) : IExtensionCommandContext
+    {
+        public void WriteLine(string text) => output.WriteLine(text);
+        public Task SendToAgentAsync(string prompt) =>
+            Task.Run(() => queue(prompt));
     }
 
     private static string AgeOf(DateTime utc)

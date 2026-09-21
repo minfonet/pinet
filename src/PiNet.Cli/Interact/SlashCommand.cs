@@ -9,7 +9,8 @@ public enum SlashCommandKind
     Resume,
     Fork,
     Model,
-    Trust
+    Trust,
+    Skill
 }
 
 public sealed record SlashCommand(SlashCommandKind Kind, string Name, string? Arg, string Raw);
@@ -26,6 +27,12 @@ public static class SlashCommandParser
         var arg = nameEnd < 0 ? null : rest[(nameEnd + 1)..].Trim();
         if (string.IsNullOrEmpty(name))
             name = string.Empty;
+
+        if (name.StartsWith("skill:", StringComparison.OrdinalIgnoreCase))
+        {
+            var skillName = name["skill:".Length..].ToLowerInvariant();
+            return new SlashCommand(SlashCommandKind.Skill, skillName, arg, raw);
+        }
 
         var kind = name.ToLowerInvariant() switch
         {

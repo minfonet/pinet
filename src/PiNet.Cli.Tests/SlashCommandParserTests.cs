@@ -48,9 +48,35 @@ public class SlashCommandParserTests
         Assert.Equal(SlashCommandKind.Resume, SlashCommandParser.Parse("/Resume x").Kind);
     }
 
-    [Fact]
-    public void Parse_TrimsArgument()
+    [Theory]
+    [InlineData("/skill:ensure-pr", "ensure-pr", null)]
+    [InlineData("/skill:ensure-pr two things", "ensure-pr", "two things")]
+    public void Parse_SkillPrefix(string line, string expectedName, string? expectedArg)
     {
-        Assert.Equal("  spaced  ".Trim(), SlashCommandParser.Parse("/resume   spaced  ").Arg);
+        var command = SlashCommandParser.Parse(line);
+        Assert.Equal(SlashCommandKind.Skill, command.Kind);
+        Assert.Equal(expectedName, command.Name);
+        Assert.Equal(expectedArg, command.Arg);
+    }
+
+    [Fact]
+    public void Parse_SkillPrefix_TrimsArgument()
+    {
+        var command = SlashCommandParser.Parse("/skill:ensure-pr   spaced  ");
+        Assert.Equal(SlashCommandKind.Skill, command.Kind);
+        Assert.Equal("ensure-pr", command.Name);
+        Assert.Equal("spaced", command.Arg);
+    }
+
+    [Fact]
+    public void Parse_SkillName_IsLowerCased()
+    {
+        Assert.Equal("ensure-pr", SlashCommandParser.Parse("/skill:Ensure-PR").Name);
+    }
+
+    [Fact]
+    public void Parse_TrimmedArgument()
+    {
+        Assert.Equal("spaced", SlashCommandParser.Parse("/resume   spaced  ").Arg);
     }
 }
