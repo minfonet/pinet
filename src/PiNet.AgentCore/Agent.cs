@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Text;
 using System.Text.Json;
 using PiNet.Abstractions.Chat;
@@ -35,6 +36,8 @@ public sealed class Agent
     private readonly SemaphoreSlim _emitGate = new(1, 1);
     private readonly object _subscribersLock = new();
     private readonly List<Func<AgentEvent, CancellationToken, Task>> _subscribers = [];
+    private readonly ConcurrentQueue<ChatMessage> _steering = new();
+    private readonly ConcurrentQueue<ChatMessage> _followUps = new();
     private CancellationTokenSource? _cts;
 
     public AgentState State { get; }
@@ -71,6 +74,31 @@ public sealed class Agent
 
     public void Abort() => _cts?.Cancel();
 
+    /// <summary>Messages queued for delivery at the next turn boundary.</summary>
+    public int PendingSteering => _steering.Count;
+
+    /// <summary>Messages queued for delivery once the run would otherwise finish.</summary>
+    public int PendingFollowUp => _followUps.Count;
+
+    /// <summary>
+    /// Queues a message to be delivered to the model at the next turn boundary
+    /// (the next LLM request of the current run). Thread-safe and non-throwing.
+    /// </summary>
+    public void Steer(string text) => Steer(ChatMessage.User(text));
+
+    /// <inheritdoc cref="Steer(string)"/>
+    public void Steer(ChatMessage message) => _steering.Enqueue(message);
+
+    /// <summary>
+    /// Queues a message to be processed after the run would otherwise finish
+    /// (when the model stops calling tools), starting another turn. Thread-safe
+    /// and non-throwing.
+    /// </summary>
+    public void FollowUp(string text) => FollowUp(ChatMessage.User(text));
+
+    /// <inheritdoc cref="FollowUp(string)"/>
+    public void FollowUp(ChatMessage message) => _followUps.Enqueue(message);
+
     public Task PromptAsync(string prompt, CancellationToken ct = default)
     {
         State.AppendMessage(ChatMessage.User(prompt));
@@ -102,6 +130,7 @@ public sealed class Agent
 
             while (!done)
             {
+                await InjectQueuedAsync(_steering, State.SteeringMode, cts.Token);
                 await EmitAsync(new TurnStartEvent(), cts.Token);
                 var llmMessages = await BuildLlmMessagesAsync(cts.Token);
 
@@ -112,8 +141,10 @@ public sealed class Agent
                 if (toolCalls.Count == 0)
                 {
                     await EmitAsync(new TurnEndEvent(assistant, []), cts.Token);
-                    done = true;
-                    break;
+                    var followUpInjected = await InjectQueuedAsync(_followUps, State.FollowUpMode, cts.Token);
+                    if (!followUpInjected && _steering.IsEmpty)
+                        done = true;
+                    continue;
                 }
 
                 var results = await ExecuteToolCallsAsync(llmMessages, toolCalls, cts.Token);
@@ -145,6 +176,20 @@ public sealed class Agent
         if (TransformContext is not null)
             messages = await TransformContext(messages, ct);
         return ConvertToLlm is null ? messages : ConvertToLlm(messages);
+    }
+
+    private async Task<bool> InjectQueuedAsync(ConcurrentQueue<ChatMessage> queue, QueueMode mode, CancellationToken ct)
+    {
+        var injected = 0;
+        while ((mode == QueueMode.All || injected == 0) && queue.TryDequeue(out var message))
+        {
+            State.AppendMessage(message);
+            await EmitAsync(new MessageStartEvent(message), ct);
+            await EmitAsync(new MessageEndEvent(message), ct);
+            injected++;
+        }
+
+        return injected > 0;
     }
 
     private IReadOnlyList<ToolDefinition>? BuildToolDefinitions()

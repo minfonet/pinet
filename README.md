@@ -9,10 +9,10 @@ with **Spec-Driven Development** (spec first, then verify against the running CL
 
 | Item | State |
 |------|-------|
-| Stages | **1–6 implemented and verified** against the running CLI |
+| Stages | **1–6 + spec 07 verified**; **Stage 7 in progress** (7a steering/follow-up verified) |
 | Build | `dotnet build PiNet.slnx` — clean (0 warnings, 0 errors) |
-| Tests | **279 passing** (see verification commands below) |
-| Next | Stage 7 — Advanced Features |
+| Tests | **287 passing** (see verification commands below) |
+| Next | Stage 7b — Context compaction |
 
 See [`STATUS.md`](STATUS.md) and [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md)
 for the full stage-by-stage record.
@@ -238,7 +238,7 @@ $env:OPENAI_API_KEY = "sk-..."; .\scripts\smoke-stage6.ps1 -OpenAiModel gpt-4o
 
 ```bash
 dotnet build PiNet.slnx        # 0 warnings, 0 errors
-dotnet test PiNet.slnx         # 279/279 passing
+dotnet test PiNet.slnx         # 287/287 passing
 dotnet run --project src/PiNet.Cli -- --list-models
 dotnet run --project src/PiNet.Cli -- --provider faux --model faux-model -p "hi"
 ```

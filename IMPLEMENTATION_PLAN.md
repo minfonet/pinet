@@ -38,11 +38,11 @@ The original Pi project (TypeScript/Node.js) is structured as a monorepo with th
 | 4 — Interactive CLI & TUI | [DONE] verified (spec `docs/spec/04`) |
 | 5 — Permissions & Tool Security | [DONE] verified (spec `docs/spec/05`) |
 | 6 — Extensions & Skills | [DONE] verified (spec `docs/spec/06`) |
-| 7 — Advanced Features | [NEXT] |
+| 7 — Advanced Features | [IN PROGRESS] 7a verified (spec `docs/spec/08`) |
 | 8 — Polish, Packaging & Release | [PENDING] |
 
 Verified baseline: `dotnet build PiNet.slnx` clean (0 warnings / 0 errors);
-`dotnet test PiNet.slnx` — 279 passing (18 Providers + 47 Permissions + 27
+`dotnet test PiNet.slnx` — 287 passing (18 Providers + 47 Permissions + 35
 AgentCore + 13 Sessions + 110 Cli + 64 Extensions).
 
 ---
@@ -389,13 +389,13 @@ pinet/
 │   ├── PiNet.Permissions/           # Permission gates and policies
 │   ├── PiNet.Extensions/            # [Stage 6] extension/skill/prompt discovery
 │   ├── PiNet.Cli/                   # Console app entry point (incl. interactive layer)
-│   ├── PiNet.AgentCore.Tests/       # 27 tests
+│   ├── PiNet.AgentCore.Tests/       # 35 tests
 │   ├── PiNet.Sessions.Tests/        # 13 tests
 │   ├── PiNet.Permissions.Tests/     # 47 tests
 │   ├── PiNet.Providers.Tests/       # 18 tests [spec 07]
 │   ├── PiNet.Extensions.Tests/      # 64 tests [Stage 6]
 │   └── PiNet.Cli.Tests/             # 110 tests
-├── docs/                            # specs (01–07), ADRs, guides
+├── docs/                            # specs (01–08), ADRs, guides
 ├── .github/workflows/               # [Stage 8]
 ├── PiNet.slnx
 └── README.md                        # [Stage 8]

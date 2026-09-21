@@ -72,13 +72,14 @@ features — those are extension points.
 
 | Stage | Name | Status |
 |-------|------|--------|
-| 1 | Foundation & Unified LLM Abstraction | Implemented / Verified |
+| 1 | Foundation & Unified LLM Abstraction | Verified (see [01-stage-1-unified-llm.md](01-stage-1-unified-llm.md)) |
 | 2 | Agent Core: Tool-Calling Loop | Verified (see [02-stage-2-agent-core.md](02-stage-2-agent-core.md)) |
 | 3 | Session Management (JSONL tree) | Verified (see [03-stage-3-sessions.md](03-stage-3-sessions.md)) |
 | 4 | Interactive CLI & Terminal UI | Verified (see [04-stage-4-interactive-loop.md](04-stage-4-interactive-loop.md)) |
 | 5 | Permissions & Tool Security | Verified (see [05-stage-5-permissions.md](05-stage-5-permissions.md)) |
-| 6 | Extension System & Skills | Not started |
-| 7 | Advanced Features | Not started |
+| 6 | Extension System & Skills | Verified (see [06-stage-6-extensions-skills.md](06-stage-6-extensions-skills.md)) |
+| — | Local & Custom LLM Providers (spec 07) | Verified (see [07-local-llm-providers.md](07-local-llm-providers.md)) |
+| 7 | Advanced Features | In progress — 7a verified (see [08-stage-7-advanced-features.md](08-stage-7-advanced-features.md)) |
 | 8 | Polish, Packaging & Release | Not started |
 
 ## 6. Conventions
