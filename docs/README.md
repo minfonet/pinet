@@ -32,6 +32,7 @@ This folder contains all project documentation, written using the **Spec-Driven 
 | [04-stage-4-interactive-loop.md](spec/04-stage-4-interactive-loop.md) | 4 — Interactive CLI Loop | Verified |
 | [05-stage-5-permissions.md](spec/05-stage-5-permissions.md) | 5 — Permissions & Tool Security | Verified |
 | [06-stage-6-extensions-skills.md](spec/06-stage-6-extensions-skills.md) | 6 — Extensions & Skills | Verified |
+| [07-local-llm-providers.md](spec/07-local-llm-providers.md) | 6 — Local & Custom LLM Providers | Verified |
 
 ### Architecture Decision Records (adr/)
 
@@ -47,6 +48,7 @@ This folder contains all project documentation, written using the **Spec-Driven 
 |-----|-------|
 | [permissions.md](permissions.md) | Permission rules, config files, `/trust`, `--approve`, container template |
 | [extensions.md](extensions.md) | Extensions, skills, prompt templates, context files, packages (`pinet install`) |
+| [local-llms.md](local-llms.md) | Local & custom LLM providers via `~/.pinet/models.json` (Ollama, LM Studio, vLLM, …) |
 
 ### Scripts
 

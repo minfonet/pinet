@@ -1,6 +1,6 @@
 # Specification 05 — Stage 5: Permissions & Tool Security
 
-- **Spec status:** Proposed
+- **Spec status:** Verified
 - **Author:** Pi.NET
 - **Written before implementation:** yes (SDD)
 - **Consumes:** SR-02 `BeforeToolCall` hook, built-in tools (`read_file`, `write_file`, `edit_file`, `bash`), SR-03 project-directory sessions

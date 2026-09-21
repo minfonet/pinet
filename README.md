@@ -11,7 +11,7 @@ with **Spec-Driven Development** (spec first, then verify against the running CL
 |------|-------|
 | Stages | **1–6 implemented and verified** against the running CLI |
 | Build | `dotnet build PiNet.slnx` — clean (0 warnings, 0 errors) |
-| Tests | **261 passing** (see verification commands below) |
+| Tests | **279 passing** (see verification commands below) |
 | Next | Stage 7 — Advanced Features |
 
 See [`STATUS.md`](STATUS.md) and [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md)
@@ -50,6 +50,9 @@ dotnet run --project src/PiNet.Cli -- --provider openai --model gpt-4o -p "hello
 | 6 | **Extensions & Skills** | Extension host, skills, prompt templates, context files, package manager |
 | 7 | Advanced Features | not started |
 | 8 | Packaging & Release | not started |
+
+Beyond the staged work, [spec 07](docs/spec/07-local-llm-providers.md) adds
+Pi-compatible local/custom LLM providers (`~/.pinet/models.json`).
 
 ## Stage 6 — Extensions & Skills (new)
 
@@ -181,6 +184,36 @@ Bundles install into `~/.pinet/packages/<name>` and are recorded in
 
 Full reference: [`docs/extensions.md`](docs/extensions.md).
 
+## Local & custom models
+
+Pi.NET talks to any OpenAI-compatible or Anthropic-compatible endpoint (Ollama,
+LM Studio, llama.cpp, vLLM, self-hosted gateways) declared in
+`~/.pinet/models.json` (`PI_NET_HOME` override) — no code changes:
+
+```json
+{
+  "providers": {
+    "ollama": {
+      "baseUrl": "http://localhost:11434/v1",
+      "api": "openai-completions",
+      "apiKey": "ollama",
+      "models": [ { "id": "llama3.1:8b", "name": "Llama 3.1 8B (Local)" } ]
+    }
+  }
+}
+```
+
+```bash
+dotnet run --project src/PiNet.Cli -- --list-models
+dotnet run --project src/PiNet.Cli -- --provider ollama --model llama3.1:8b -p "hello"
+```
+
+Supported `api` values are `openai-completions` and `anthropic-messages`;
+`apiKey` is a literal or a `$ENV_VAR` reference. Built-in providers are always
+kept, and a configured `openai`/`anthropic` key merges by model `id`. A missing
+or malformed file falls back to the built-ins with a warning. Full reference:
+[`docs/local-llms.md`](docs/local-llms.md).
+
 ## Manual smoke tests
 
 [`scripts/smoke-stage6.ps1`](scripts/smoke-stage6.ps1) runs the Stage 6 wiring
@@ -205,7 +238,7 @@ $env:OPENAI_API_KEY = "sk-..."; .\scripts\smoke-stage6.ps1 -OpenAiModel gpt-4o
 
 ```bash
 dotnet build PiNet.slnx        # 0 warnings, 0 errors
-dotnet test PiNet.slnx         # 261/261 passing
+dotnet test PiNet.slnx         # 279/279 passing
 dotnet run --project src/PiNet.Cli -- --list-models
 dotnet run --project src/PiNet.Cli -- --provider faux --model faux-model -p "hi"
 ```
@@ -214,6 +247,7 @@ dotnet run --project src/PiNet.Cli -- --provider faux --model faux-model -p "hi"
 
 - [`docs/README.md`](docs/README.md) — index of specs and guides (Spec-Driven Development)
 - [`docs/extensions.md`](docs/extensions.md) — extensions, skills, templates, packages reference
+- [`docs/local-llms.md`](docs/local-llms.md) — local & custom LLM providers (`~/.pinet/models.json`)
 - [`docs/permissions.md`](docs/permissions.md) — permission rules, `/trust`, `--approve`, sandbox template
 - [`docs/spec/`](docs/spec/) — per-stage specifications with verification logs
 - [`STATUS.md`](STATUS.md) — project status and stage-by-stage record

@@ -15,20 +15,32 @@ public sealed class OpenAIChatProvider : IChatProvider
 
     private readonly HttpClient _http;
     private readonly string _baseUrl;
+    private readonly string _providerId;
+    private readonly string _name;
 
-    public string Id => "openai";
-    public string Name => "OpenAI";
+    public string Id => _providerId;
+    public string Name => _name;
     public IReadOnlyList<ModelDefinition> Models { get; }
     public ICredentialResolver Credentials { get; }
 
-    public OpenAIChatProvider(ICredentialStore? store = null, string baseUrl = "https://api.openai.com/v1")
+    public OpenAIChatProvider(
+        ICredentialStore? store = null,
+        string baseUrl = "https://api.openai.com/v1",
+        string? apiKey = null,
+        IReadOnlyList<ModelDefinition>? models = null,
+        string providerId = "openai",
+        string name = "OpenAI")
     {
+        _providerId = providerId;
+        _name = name;
         _baseUrl = baseUrl.TrimEnd('/');
         _http = new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
         _http.DefaultRequestHeaders.Accept.Add(new("application/json"));
         _http.DefaultRequestHeaders.Accept.Add(new("text/event-stream"));
-        Credentials = new EnvCredentialResolver("OpenAI API key", ["OPENAI_API_KEY", "OPENAI_KEY"], store ?? new InMemoryCredentialStore(), _baseUrl);
-        Models = OpenAICatalog.Models;
+        Credentials = apiKey is null
+            ? new EnvCredentialResolver("OpenAI API key", ["OPENAI_API_KEY", "OPENAI_KEY"], store ?? new InMemoryCredentialStore(), _baseUrl)
+            : new PiNet.Providers.Auth.ConfigCredentialResolver(_baseUrl, apiKey, ["OPENAI_API_KEY", "OPENAI_KEY"]);
+        Models = models ?? OpenAICatalog.Models;
     }
 
     public async IAsyncEnumerable<StreamEvent> StreamAsync(ChatRequest request, AuthInfo auth)

@@ -9,9 +9,9 @@
 | Item | State |
 |------|-------|
 | Solution | `PiNet.slnx` — builds clean (0 warnings, 0 errors) |
-| Tests | **261 passing** (47 `PiNet.Permissions.Tests` + 27 `PiNet.AgentCore.Tests` + 13 `PiNet.Sessions.Tests` + 110 `PiNet.Cli.Tests` + 64 `PiNet.Extensions.Tests`), 0 failing |
+| Tests | **279 passing** (18 `PiNet.Providers.Tests` + 47 `PiNet.Permissions.Tests` + 27 `PiNet.AgentCore.Tests` + 13 `PiNet.Sessions.Tests` + 110 `PiNet.Cli.Tests` + 64 `PiNet.Extensions.Tests`), 0 failing |
 | Current stage | **Stage 7 — Advanced Features** (next) |
-| Stages complete | 1, 2, 3, 4, 5, 6 (specs verified against the running CLI) |
+| Stages complete | 1, 2, 3, 4, 5, 6 + spec 07 (specs verified against the running CLI) |
 | Packaging | Git repo initialized with `.gitignore`; CI/release not started (Stage 8) |
 
 ## Projects
@@ -19,7 +19,7 @@
 | Project | Role | State |
 |---------|------|-------|
 | `PiNet.Abstractions` | `ChatMessage`/content blocks, `StreamEvent` union, `IChatProvider`, `IModelRunner`, `ModelRegistry`, credential resolution (env + store) | Done (Stage 1) |
-| `PiNet.Providers` | `ChatService` facade; OpenAI + Anthropic providers (raw HTTP + SSE, ADR-0001); `Faux` provider for deterministic tests; per-provider model catalogs | Done (Stage 1) |
+| `PiNet.Providers` | `ChatService` facade; OpenAI + Anthropic providers (raw HTTP + SSE, ADR-0001); `Faux` provider for deterministic tests; per-provider model catalogs; Pi-compatible custom providers via `~/.pinet/models.json` (`ModelsConfig`, `ConfigCredentialResolver`, spec 07) | Done (Stages 1, 6) |
 | `PiNet.AgentCore` | `Agent` loop (`PromptAsync`/`ContinueAsync`/`Abort`/`Subscribe`), `AgentEvent` lifecycle, parallel/sequential tool execution, `BeforeToolCall`/`AfterToolCall` hooks, `TransformContext`/`ConvertToLlm`, built-in tools (`read`, `write`, `edit`, `bash`) | Done (Stage 2) |
 | `PiNet.Sessions` | JSONL tree sessions (`Session`, `SessionEntry`, `SessionStore`, `SessionJson`), `SessionManager` (create/load/latest/list/fork, append watermark), `SessionCompactor` (LLM summarization) | Done (Stage 3) |
 | `PiNet.Cli` | Entry point: `-p/--print`, `--agent` one-shot, `--interactive/-i` loop, session flags (`--session`, `-c`, `--fork`, `--no-session`), `--list-models`, `--approve`/`--no-approve`, `install/list/remove/update` package subcommands, `--no-extensions`/`--no-skills`/`--no-prompt-templates`; interactive layer: `LineEditor`, `LineHistory`, `SlashCommand` (incl. `/trust`, `/skill:`), `AgentConsoleRenderer` (shared folding), `TurnRunner` (shared turn/persist), `InteractiveLoop`, `PermissionGate` + `ConsolePermissionPrompt`; `Extensions/` adapter + `CliEnvironment` setup | Done (Stages 4–6) |
@@ -30,6 +30,7 @@
 | `PiNet.Permissions.Tests` | Rule matching, resolution algorithm, config load/save/malformed, `PI_NET_HOME`, `TrustStore`, `ToolPaths` | 47 passing |
 | `PiNet.Cli.Tests` | Line editor, history, slash parser (incl. `/skill:`), renderer folding, full `InteractiveLoop` tests (scripted keys, `ScriptedProvider`, `HangingProvider`), permission-gate AC1–AC4 tests (`PermissionGateTests`, `ToolCallScript`), plus `SlashSkillTests`, `ExtensionCommandTests`, `TemplateLoopTests`, `CliEnvironmentTests`, `PackageManagerCliTests` (Spec 06) | 110 passing |
 | `PiNet.Extensions.Tests` | Skill frontmatter/registry/catalog, template expander/registry, context files + system prompt builder, tar extractor, package manager, extension host (incl. real SDK compile + cache reuse) | 64 passing |
+| `PiNet.Providers.Tests` | `models.json` parsing + warnings, `ConfigCredentialResolver` (`$ENV`/literal/fallback), custom provider registration (OpenAI/Anthropic), built-in merge by model id, end-to-end `PI_NET_HOME` (spec 07) | 18 passing |
 
 Not yet created (later stages): steering/follow-up + advanced features (7),
 packaging/CI (8).
@@ -121,6 +122,31 @@ All acceptance criteria checked off (evidence in spec §7/§8 verification log);
 manual smoke (`npm:`/`git:` installs, extension tool invoked by a real LLM) is
 deferred to a networked machine.
 
+### Local & Custom LLM Providers (spec 07) — ✅ verified
+Spec [`docs/spec/07`](docs/spec/07-local-llm-providers.md) marked *Verified*
+(2026-09-21). Adds Pi-compatible custom providers to `PiNet.Providers` — no new
+project, no NuGet.
+
+Implemented:
+- `ModelsConfig.TryLoad` / `ApplyTo` — reads `~/.pinet/models.json`
+  (`PI_NET_HOME` override); missing/malformed file → built-ins only + warning
+- `ConfigCredentialResolver` — `apiKey` as `$ENV` reference, literal, or
+  fallback to the provider's default env vars; `baseUrl` flows through as
+  `AuthInfo.BaseUrl`
+- Provider factory: `openai-completions` → `OpenAIChatProvider`,
+  `anthropic-messages` → `AnthropicChatProvider`; unknown `api` skipped with a
+  warning
+- Built-in merge by model `id` (replace + append); custom keys (e.g. `ollama`)
+  added as new providers
+- `OpenAI`/`Anthropic` constructors gained `providerId`/`name` so custom keys
+  do not collide with the built-ins
+- `docs/local-llms.md` — configuration guide (Ollama, LM Studio, llama.cpp,
+  vLLM, Anthropic-compatible)
+
+Verified: `PiNet.Providers.Tests` 18 passing; CLI `--list-models` with a temp
+`PI_NET_HOME` + `models.json` shows `[ollama] llama3.1:8b` alongside the
+built-ins (exit 0).
+
 ### Stages 7–8 — ⬜ not started
 Steering/follow-up + compaction polish (7), packaging/CI/release (8).
 See `IMPLEMENTATION_PLAN.md`.
@@ -130,16 +156,19 @@ See `IMPLEMENTATION_PLAN.md`.
 1. **Stage 7 — Advanced Features** (next): steering/follow-up + compaction
    polish. See `IMPLEMENTATION_PLAN.md`.
 2. **Stage 6 done** (2026-09-21): `PiNet.Extensions` (extensions, skills,
-   templates, context files, packages) wired into the CLI and verified
-   (261 tests passing). Manual smoke tests (`pinet install npm:/git:`, real
-   LLM invoking an extension tool) still to run on a networked machine.
+   templates, context files, packages) wired into the CLI and verified.
+   **Spec 07** (local & custom LLM providers via `~/.pinet/models.json`) is
+   also done and verified (279 tests passing). Manual smoke tests
+   (`pinet install npm:/git:`, real LLM invoking an extension tool) still to
+   run on a networked machine; the smoke script's optional `-Provider`/`-Model`
+   local-provider parameters are not added yet.
 3. Later: packaging/CI/release (Stage 8).
 
 ## Verification commands
 
 ```bash
 dotnet build PiNet.slnx        # 0 warnings, 0 errors
-dotnet test PiNet.slnx         # 261/261 passing
+dotnet test PiNet.slnx         # 279/279 passing
 dotnet run --project src/PiNet.Cli -- --list-models
 dotnet run --project src/PiNet.Cli -- --provider faux --model faux-model -p "hi"
 ```

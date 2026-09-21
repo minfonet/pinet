@@ -42,8 +42,8 @@ The original Pi project (TypeScript/Node.js) is structured as a monorepo with th
 | 8 — Polish, Packaging & Release | [PENDING] |
 
 Verified baseline: `dotnet build PiNet.slnx` clean (0 warnings / 0 errors);
-`dotnet test PiNet.slnx` — 261 passing (47 Permissions + 27 AgentCore + 13
-Sessions + 110 Cli + 64 Extensions).
+`dotnet test PiNet.slnx` — 279 passing (18 Providers + 47 Permissions + 27
+AgentCore + 13 Sessions + 110 Cli + 64 Extensions).
 
 ---
 
@@ -288,6 +288,11 @@ Delivered (spec `docs/spec/06`, verified 2026-09-21; see `docs/extensions.md`):
 Manual smoke (network) pending: `install npm:<pkg>`/`git:<url>` on a real
 machine and an extension tool invoked end-to-end by a real LLM.
 
+Delivered alongside Stage 6 — **spec 07** (`docs/spec/07-local-llm-providers.md`,
+verified 2026-09-21): Pi-compatible local & custom LLM providers via
+`~/.pinet/models.json` (Ollama, LM Studio, llama.cpp, vLLM, Anthropic-compatible
+gateways); config guide in `docs/local-llms.md`.
+
 ---
 
 ## Stage 7 — Advanced Features — [PENDING]
@@ -387,8 +392,10 @@ pinet/
 │   ├── PiNet.AgentCore.Tests/       # 27 tests
 │   ├── PiNet.Sessions.Tests/        # 13 tests
 │   ├── PiNet.Permissions.Tests/     # 47 tests
-│   └── PiNet.Cli.Tests/             # 80 tests
-├── docs/                            # specs (01–06), ADRs, guides
+│   ├── PiNet.Providers.Tests/       # 18 tests [spec 07]
+│   ├── PiNet.Extensions.Tests/      # 64 tests [Stage 6]
+│   └── PiNet.Cli.Tests/             # 110 tests
+├── docs/                            # specs (01–07), ADRs, guides
 ├── .github/workflows/               # [Stage 8]
 ├── PiNet.slnx
 └── README.md                        # [Stage 8]

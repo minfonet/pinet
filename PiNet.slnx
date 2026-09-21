@@ -9,6 +9,7 @@
     <Project Path="src/PiNet.Permissions.Tests/PiNet.Permissions.Tests.csproj" />
     <Project Path="src/PiNet.Extensions/PiNet.Extensions.csproj" />
     <Project Path="src/PiNet.Extensions.Tests/PiNet.Extensions.Tests.csproj" />
+    <Project Path="src/PiNet.Providers.Tests/PiNet.Providers.Tests.csproj" />
   </Folder>
   <Project Path="src/PiNet.Abstractions/PiNet.Abstractions.csproj" />
   <Project Path="src/PiNet.Cli/PiNet.Cli.csproj" />

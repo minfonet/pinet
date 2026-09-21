@@ -13,6 +13,12 @@ public static class DefaultModelRegistry
         registry.RegisterProvider(new OpenAIChatProvider());
         registry.RegisterProvider(new AnthropicChatProvider());
         registry.RegisterProvider(new FauxChatProvider());
+
+        var config = ModelsConfig.TryLoad(out var warning);
+        if (warning is not null)
+            Console.Error.WriteLine($"Warning: {warning}");
+        config.ApplyTo(registry);
+
         return registry;
     }
 }

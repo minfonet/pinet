@@ -16,20 +16,32 @@ public sealed class AnthropicChatProvider : IChatProvider
 
     private readonly HttpClient _http;
     private readonly string _baseUrl;
+    private readonly string _providerId;
+    private readonly string _name;
 
-    public string Id => "anthropic";
-    public string Name => "Anthropic";
+    public string Id => _providerId;
+    public string Name => _name;
     public IReadOnlyList<ModelDefinition> Models { get; }
     public ICredentialResolver Credentials { get; }
 
-    public AnthropicChatProvider(ICredentialStore? store = null, string baseUrl = "https://api.anthropic.com")
+    public AnthropicChatProvider(
+        ICredentialStore? store = null,
+        string baseUrl = "https://api.anthropic.com",
+        string? apiKey = null,
+        IReadOnlyList<ModelDefinition>? models = null,
+        string providerId = "anthropic",
+        string name = "Anthropic")
     {
+        _providerId = providerId;
+        _name = name;
         _baseUrl = baseUrl.TrimEnd('/');
         _http = new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
         _http.DefaultRequestHeaders.Accept.Add(new("application/json"));
         _http.DefaultRequestHeaders.Accept.Add(new("text/event-stream"));
-        Credentials = new EnvCredentialResolver("Anthropic API key", ["ANTHROPIC_API_KEY"], store ?? new InMemoryCredentialStore(), _baseUrl);
-        Models = AnthropicCatalog.Models;
+        Credentials = apiKey is null
+            ? new EnvCredentialResolver("Anthropic API key", ["ANTHROPIC_API_KEY"], store ?? new InMemoryCredentialStore(), _baseUrl)
+            : new PiNet.Providers.Auth.ConfigCredentialResolver(_baseUrl, apiKey, ["ANTHROPIC_API_KEY"]);
+        Models = models ?? AnthropicCatalog.Models;
     }
 
     public async IAsyncEnumerable<StreamEvent> StreamAsync(ChatRequest request, AuthInfo auth)
