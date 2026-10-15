@@ -14,9 +14,24 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <AssemblyName>pinet</AssemblyName>
     <PackAsTool>true</PackAsTool>
     <ToolCommandName>pinet</ToolCommandName>
+    <PackageId>PiNet</PackageId>
+    <Version>0.1.0</Version>
+    <Authors>Pi.NET</Authors>
+    <Description>Minimal terminal coding harness for .NET 10 (a Pi Agent Harness port): unified LLM API, tool-calling agent loop, JSONL sessions, permissions, extensions/skills, thinking levels, image input, export/import.</Description>
+    <PackageTags>cli;ai;agent;llm;terminal;tools</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageOutputPath>..\..\artifacts\packages</PackageOutputPath>
   </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="..\..\README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="PiNet.Cli.Tests" />
+  </ItemGroup>
 
 </Project>

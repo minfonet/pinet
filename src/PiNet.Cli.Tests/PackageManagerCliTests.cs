@@ -64,6 +64,41 @@ public class PackageManagerCliTests
         Assert.Contains("(no packages installed)", stdout);
     }
 
+    /// <summary>
+    /// Regression: the top-level CLI dispatch must hand the full args (including
+    /// the subcommand name) to <see cref="PackageCommands"/>; passing them already
+    /// sliced made every `pinet install|list|remove|update` print usage.
+    /// </summary>
+    [Fact]
+    public void Program_DispatchesPackageSubcommands_WithFullArgs()
+    {
+        using var env = new ExtTestEnv();
+        var (stdout, _, code) = RunProgram(["list"]);
+
+        Assert.Equal(0, code);
+        Assert.Contains("(no packages installed)", stdout);
+    }
+
+    private static (string Stdout, string Stderr, int Code) RunProgram(string[] args)
+    {
+        var oldOut = Console.Out;
+        var oldError = Console.Error;
+        var stdout = new StringWriter();
+        var stderr = new StringWriter();
+        try
+        {
+            Console.SetOut(stdout);
+            Console.SetError(stderr);
+            var code = Program.RunAsync(args).GetAwaiter().GetResult();
+            return (stdout.ToString(), stderr.ToString(), code);
+        }
+        finally
+        {
+            Console.SetOut(oldOut);
+            Console.SetError(oldError);
+        }
+    }
+
     [Fact]
     public void Remove_UnknownReturnsError()
     {

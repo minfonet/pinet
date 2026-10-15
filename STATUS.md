@@ -9,10 +9,10 @@
 | Item | State |
 |------|-------|
 | Solution | `PiNet.slnx` — builds clean (0 warnings, 0 errors) |
-| Tests | **370 passing** (34 `PiNet.Providers.Tests` + 47 `PiNet.Permissions.Tests` + 52 `PiNet.AgentCore.Tests` + 26 `PiNet.Sessions.Tests` + 147 `PiNet.Cli.Tests` + 64 `PiNet.Extensions.Tests`), 0 failing |
-| Current stage | **Stage 7 — Advanced Features** — ✅ 7a–7g verified (7a.2 CLI capture deferred) |
+| Tests | **371 passing** (34 `PiNet.Providers.Tests` + 47 `PiNet.Permissions.Tests` + 52 `PiNet.AgentCore.Tests` + 26 `PiNet.Sessions.Tests` + 148 `PiNet.Cli.Tests` + 64 `PiNet.Extensions.Tests`), 0 failing |
+| Current stage | **Stage 8 — Packaging / CI / Release** — packaging + release workflow + `pinet update --self` implemented and verified locally; NuGet.org publication pending |
 | Stages complete | 1, 2, 3, 4, 5, 6 + spec 07 + spec 08 (specs verified against the running CLI) |
-| Packaging | Stage 8 scaffolding in repo: CI workflow, `dotnet tool` metadata, install scripts, `docs/packaging.md`; release/publish verification pending |
+| Packaging | `dotnet pack` → `PiNet.0.1.0.nupkg` verified (tool install + run from a local feed); self-contained `win-x64` publish verified; CI + release workflows committed; `scripts/publish.ps1` for local per-RID publishes |
 
 ## Projects
 
@@ -28,12 +28,12 @@
 | `PiNet.AgentCore.Tests` | Loop, hooks, tool execution, built-in tools, steering/follow-up (scripted `IModelRunner`), `TokenEstimator`/usage (spec 08 §7b), thinking capture + cross-provider normalization (spec 08 §7c/§7d) | 52 passing |
 | `PiNet.Sessions.Tests` | Session tree, JSONL store, compactor, `ContextCompactor` (spec 08 §7b), export/import round-trips (spec 08 §7f) | 26 passing |
 | `PiNet.Permissions.Tests` | Rule matching, resolution algorithm, config load/save/malformed, `PI_NET_HOME`, `TrustStore`, `ToolPaths` | 47 passing |
-| `PiNet.Cli.Tests` | Line editor, history, slash parser (incl. `/skill:`), renderer folding, full `InteractiveLoop` tests (scripted keys, `ScriptedProvider`, `HangingProvider`), permission-gate AC1–AC4 tests (`PermissionGateTests`, `ToolCallScript`), `/compact` + `/thinking` + `/export`/`/import` + image-input tests (spec 08 §7b–§7f), `SettingsTests` (spec 08 §7g), plus `SlashSkillTests`, `ExtensionCommandTests`, `TemplateLoopTests`, `CliEnvironmentTests`, `PackageManagerCliTests` (Spec 06) | 147 passing |
+| `PiNet.Cli.Tests` | Line editor, history, slash parser (incl. `/skill:`), renderer folding, full `InteractiveLoop` tests (scripted keys, `ScriptedProvider`, `HangingProvider`), permission-gate AC1–AC4 tests (`PermissionGateTests`, `ToolCallScript`), `/compact` + `/thinking` + `/export`/`/import` + image-input tests (spec 08 §7b–§7f), `SettingsTests` (spec 08 §7g), plus `SlashSkillTests`, `ExtensionCommandTests`, `TemplateLoopTests`, `CliEnvironmentTests`, `PackageManagerCliTests` (Spec 06, incl. CLI dispatch regression) | 148 passing |
 | `PiNet.Extensions.Tests` | Skill frontmatter/registry/catalog, template expander/registry, context files + system prompt builder, tar extractor, package manager, extension host (incl. real SDK compile + cache reuse) | 64 passing |
 | `PiNet.Providers.Tests` | `models.json` parsing + warnings, `ConfigCredentialResolver` (`$ENV`/literal/fallback), custom provider registration (OpenAI/Anthropic), built-in merge by model id, end-to-end `PI_NET_HOME` (spec 07), thinking payload wire tests (spec 08 §7c) | 34 passing |
 
-Not yet created (later stages): packaging/release automation (Stage 8); the
-product features (specs 01–08) are complete.
+Packaging/release automation lives in the repo (Stage 8, see below); the product
+features (specs 01–08) are complete.
 
 ## Stage-by-stage
 
@@ -201,25 +201,31 @@ project wins, malformed warns), `/settings` view/edit, CLI flag precedence,
 `SessionManager` root honors `PI_NET_HOME`. Hot-reload during a session remains
 out of scope. Tests: 19 `SettingsTests`.
 
-### Stage 8 — Packaging / CI / Release — 🔄 scaffolding committed
-In repo: `.github/workflows/ci.yml` (build + test), `PackAsTool`/`ToolCommandName`
-metadata, `install.ps1`/`install.sh`, `docs/packaging.md`. Pending: release
-workflow (tag → pack/publish), self-contained per-RID publishes, `pinet update
---self`. See `IMPLEMENTATION_PLAN.md`.
+### Stage 8 — Packaging / CI / Release — 🔄 mostly done, verified locally
+Implemented: global-tool packaging (`PackageId=PiNet`, `AssemblyName=pinet`,
+README in package), install scripts, `pinet update --self`, CI workflow,
+**release workflow** (`v*` tags → tests + pack + self-contained
+`win-x64`/`linux-x64`/`osx-arm64` binaries + NuGet push when
+`NUGET_API_KEY` is set + GitHub release assets), `scripts/publish.ps1`,
+`docs/packaging.md`. Locally verified: pack → tool install from a local feed →
+run; `win-x64` self-contained `pinet.exe` → run; `update --self` failure path
+prints guidance. Pending: first NuGet.org publication (package not pushed yet),
+SBOM/signing decisions.
 
 ## Known issues / next steps
 
 1. **Stage 7 — Advanced Features** — ✅ complete (2026-10-15): 7a–7g verified,
-   370 tests passing. Remaining deferred items (documented, non-blocking):
+   371 tests passing. Remaining deferred items (documented, non-blocking):
    - 7a.2 — in-flight keystroke capture during a running turn (Enter → steer,
      Alt+Enter → follow-up).
    - 7e — clipboard/paste image input (platform-dependent, optional per spec).
-   - 7z/7g — settings hot-reload during a running session (restart picks up
+   - 7g — settings hot-reload during a running session (restart picks up
      changes).
 
-2. **Stage 8 — Packaging / CI / Release** — scaffolding committed; pending:
-   release workflow (tag → `dotnet pack` + publish), self-contained per-RID
-   publishes, `pinet update --self`, SBOM/telemetry decisions.
+2. **Stage 8 — Packaging / CI / Release** — packaging and release automation
+   verified locally; remaining: push the first package to NuGet.org (needs an
+   account/API key), decide on SBOM/telemetry (currently none, per the
+   zero-dependency posture).
 
 3. **Deferred (from earlier stages)** — Stage 6 network smoke tests
    (`pinet install npm:`/`git:`, extension tool invoked by a real LLM); the
@@ -229,7 +235,8 @@ workflow (tag → pack/publish), self-contained per-RID publishes, `pinet update
 
 ```bash
 dotnet build PiNet.slnx        # 0 warnings, 0 errors
-dotnet test PiNet.slnx         # 370/370 passing
+dotnet test PiNet.slnx         # 371/371 passing
 dotnet run --project src/PiNet.Cli -- --list-models
 dotnet run --project src/PiNet.Cli -- --provider faux --model faux-model -p "hi"
+dotnet pack src/PiNet.Cli/PiNet.Cli.csproj -c Release -o artifacts/packages
 ```

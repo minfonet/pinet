@@ -28,10 +28,10 @@ internal static class Program
         }
     }
 
-    private static async Task<int> RunAsync(string[] args)
+    internal static async Task<int> RunAsync(string[] args)
     {
         if (args.Length > 0 && IsPackageSubcommand(args[0]))
-            return await PackageCommands.RunAsync(args[1..]);
+            return await PackageCommands.RunAsync(args);
 
         var cwd = Environment.CurrentDirectory;
         var settings = SettingsManager.Load(cwd);
@@ -523,7 +523,7 @@ internal static class Program
     private static void PrintHelp()
     {
         Console.WriteLine("""
-        Pi.NET — terminal coding harness (Stage 7)
+        Pi.NET — terminal coding harness (specs 01–08)
 
         Usage:
           pinet --provider <provider> --model <model> -p "your prompt"
@@ -531,7 +531,7 @@ internal static class Program
           pinet install <path|npm:<pkg>|git:<url>>
           pinet list
           pinet remove <name>
-          pinet update [name]
+          pinet update [name|--self]
 
         Options:
           --provider <name>    Provider id (openai, anthropic, faux)

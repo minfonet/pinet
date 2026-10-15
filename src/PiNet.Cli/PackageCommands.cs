@@ -51,6 +51,8 @@ public static class PackageCommands
                     return 0;
 
                 case "update":
+                    if (args.Count > 1 && args[1] is "--self")
+                        return await SelfUpdateAsync(ct);
                     await PackageManager.UpdateAsync(args.Count > 1 ? args[1] : null, ct);
                     Console.WriteLine(args.Count > 1 ? $"updated {args[1]}" : "updated all packages");
                     return 0;
@@ -74,5 +76,57 @@ public static class PackageCommands
         Console.Error.WriteLine("  pinet list");
         Console.Error.WriteLine("  pinet remove <name>");
         Console.Error.WriteLine("  pinet update [name]");
+        Console.Error.WriteLine("  pinet update --self          (update the PiNet global tool)");
+    }
+
+    /// <summary>
+    /// `pinet update --self` — delegates to `dotnet tool update -g PiNet`. Works
+    /// when PiNet was installed as a global tool; prints guidance otherwise.
+    /// </summary>
+    private static async Task<int> SelfUpdateAsync(CancellationToken ct)
+    {
+        Console.WriteLine("updating the PiNet global tool: dotnet tool update -g PiNet");
+
+        using var process = new System.Diagnostics.Process
+        {
+            StartInfo = new System.Diagnostics.ProcessStartInfo("dotnet", "tool update -g PiNet")
+            {
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true
+            }
+        };
+
+        try
+        {
+            process.Start();
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Self-update failed to start: {ex.Message}");
+            return 1;
+        }
+
+        var stdout = process.StandardOutput.ReadToEndAsync(ct);
+        var stderr = process.StandardError.ReadToEndAsync(ct);
+        await process.WaitForExitAsync(ct);
+
+        var output = (await stdout).Trim();
+        if (output.Length > 0)
+            Console.WriteLine(output);
+        var error = (await stderr).Trim();
+        if (error.Length > 0)
+            Console.Error.WriteLine(error);
+
+        if (process.ExitCode != 0)
+        {
+            Console.Error.WriteLine(
+                "Self-update failed. If PiNet is not installed as a global tool, update it from " +
+                "its source checkout (git pull && dotnet build) or re-run the install script.");
+            return process.ExitCode;
+        }
+
+        Console.WriteLine("PiNet is up to date.");
+        return 0;
     }
 }

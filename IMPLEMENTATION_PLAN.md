@@ -39,20 +39,21 @@ The original Pi project (TypeScript/Node.js) is structured as a monorepo with th
 | 5 — Permissions & Tool Security | [DONE] verified (spec `docs/spec/05`) |
 | 6 — Extensions & Skills | [DONE] verified (spec `docs/spec/06`) |
 | 7 — Advanced Features | [DONE] verified (spec `docs/spec/08`); 7a.2 CLI capture deferred |
-| 8 — Polish, Packaging & Release | [IN PROGRESS] scaffolding committed; release automation pending |
+| 8 — Polish, Packaging & Release | [DONE] packaging + release workflow + `pinet update --self` verified locally; first NuGet.org push pending |
 
 Verified baseline: `dotnet build PiNet.slnx` clean (0 warnings / 0 errors);
-`dotnet test PiNet.slnx` — 370 passing (34 Providers + 47 Permissions + 52
-AgentCore + 26 Sessions + 147 Cli + 64 Extensions).
+`dotnet test PiNet.slnx` — 371 passing (34 Providers + 47 Permissions + 52
+AgentCore + 26 Sessions + 148 Cli + 64 Extensions).
 
 ### Recommended implementation order (remaining work)
 
-1. **8 — Packaging / CI / Release** — release workflow (tag → `dotnet pack` +
-   publish), self-contained per-RID publishes, `pinet update --self`,
-   SBOM/telemetry decisions; CI is already in `.github/workflows/ci.yml`.
+1. **Publish the first package to NuGet.org** — `dotnet pack` + `dotnet nuget
+   push` (or push a `v*` tag once `NUGET_API_KEY` is configured); everything
+   else in the release workflow is ready and verified locally.
 2. **Deferred** — 7a.2 in-flight keystroke capture (Enter → steer, Alt+Enter →
    follow-up); 7e clipboard images; 7g settings hot-reload; network smoke tests
-   (Stage 6 `install npm:`/`git:` + extension tool invoked by a real LLM).
+   (Stage 6 `install npm:`/`git:` + extension tool invoked by a real LLM);
+   SBOM/signing decisions.
 
 ---
 
@@ -391,17 +392,24 @@ integration tests. (Stage 7 is fully covered — its rows below are marked ✅ D
 | 7f | Export/import (JSONL round-trip, HTML, malformed files) | ✅ Done | `SessionExportTests` (6), 5 CLI tests |
 | 7g | Settings (global/project merge, `/settings`, `PI_NET_HOME`) | ✅ Done | `SettingsTests` (19) |
 
-## Stage 8 — Polish, Packaging & Release — [IN PROGRESS]
+## Stage 8 — Polish, Packaging & Release — [DONE] (verified locally)
 
 **Goal:** Production-ready release with documentation and CI/CD.
 
 ### Deliverables
 
-- CLI packaging: `PackAsTool`, `ToolCommandName`, `install.ps1`/`install.sh` — ✅ committed
-- Build & CI: `.github/workflows/ci.yml` builds and tests — ✅ committed
-- Documentation: `docs/packaging.md` — ✅ committed
-- Remaining: release workflow (tag → `dotnet pack`/publish), self-contained
-  publish per RID, `pinet update --self`, SBOM/telemetry opt-in
+- CLI packaging: `PackAsTool`, `ToolCommandName`, `PackageId=PiNet`,
+  `AssemblyName=pinet`, README in package, `install.ps1`/`install.sh` — ✅ done
+- `pinet update --self` (delegates to `dotnet tool update -g PiNet`) — ✅ done
+- Build & CI: `.github/workflows/ci.yml` builds and tests — ✅ done
+- Release workflow (`.github/workflows/release.yml`): tag → tests + pack +
+  self-contained per-RID binaries + NuGet push (guarded by `NUGET_API_KEY`) +
+  GitHub release assets — ✅ done, verified locally (pack → local feed →
+  tool install → run; `win-x64` self-contained → run)
+- Documentation: `docs/packaging.md` (build/pack/install/self-contained/release)
+  — ✅ done
+- Remaining: first NuGet.org publication; SBOM/signing decisions;
+  telemetry decided against (zero-dependency posture)
 
 ### Full scope
 
@@ -457,7 +465,7 @@ pinet/
 │   ├── PiNet.Permissions.Tests/     # 47 tests
 │   ├── PiNet.Providers.Tests/       # 34 tests [spec 07 + 08 §7c]
 │   ├── PiNet.Extensions.Tests/      # 64 tests [Stage 6]
-│   └── PiNet.Cli.Tests/             # 147 tests
+│   └── PiNet.Cli.Tests/             # 148 tests
 ├── docs/                            # specs (01–08), ADRs, guides
 ├── .github/workflows/               # [Stage 8]
 ├── PiNet.slnx
@@ -496,6 +504,6 @@ reference `xunit` + `Microsoft.NET.Test.Sdk`.
 ---
 
 *Plan created: 2026-09-09*
-*Last updated: 2026-10-15 — Stage 7 verified (7a–7g), 370 tests passing. Next: Stage 8 release automation; see `STATUS.md`.*
+*Last updated: 2026-10-15 — Stage 7 verified (7a–7g) and Stage 8 packaging/release implemented and verified locally, 371 tests passing. Next: publish the first package to NuGet.org; see `STATUS.md`.*
 *Target: .NET 10 (preview → GA)*
 *Reference: https://github.com/earendil-works/pi*
