@@ -10,6 +10,8 @@ public enum SlashCommandKind
     Fork,
     Model,
     Trust,
+    Compact,
+    Settings,
     Skill
 }
 
@@ -43,6 +45,8 @@ public static class SlashCommandParser
             "fork" => SlashCommandKind.Fork,
             "model" => SlashCommandKind.Model,
             "trust" => SlashCommandKind.Trust,
+            "compact" => SlashCommandKind.Compact,
+            "settings" => SlashCommandKind.Settings,
             _ => SlashCommandKind.Unknown
         };
 

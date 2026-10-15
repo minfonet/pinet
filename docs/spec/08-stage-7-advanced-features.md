@@ -16,12 +16,12 @@ independently:
 | Sub-stage | Feature | Status |
 |-----------|---------|--------|
 | 7a | Steering & follow-up | Verified (agent core); CLI capture 7a.2 deferred |
-| 7b | Context compaction (auto + `/compact`) | Planned |
-| 7c | Reasoning / thinking levels | Planned |
-| 7d | Cross-provider handoff | Planned |
-| 7e | Image input | Planned |
-| 7f | Export / import | Planned |
-| 7g | Settings | Planned |
+| 7b | Context compaction (auto + `/compact`) | Verified |
+| 7c | Reasoning / thinking levels | Skeleton implemented |
+| 7d | Cross-provider handoff | Skeleton implemented |
+| 7e | Image input | Skeleton implemented |
+| 7f | Export / import | Skeleton implemented |
+| 7g | Settings | Skeleton implemented |
 
 ## 2. Scope
 
@@ -129,25 +129,108 @@ public int PendingFollowUp { get; }
 
 ## 4. Sub-stage 7b — Context compaction (auto + `/compact`)
 
-**Goal.** Keep long sessions within the model's context window.
+- **Status:** DONE (2026-09-21).
 
-Scope:
+**Goal.** Keep long sessions within the model's context window without losing
+persisted history.
 
-- Wire `SessionCompactor` into the agent through `Agent.TransformContext`: before
-  each LLM request, if the estimated prompt size exceeds a threshold derived from
-  `ModelDefinition.ContextWindow`, summarize the oldest messages and replace them
-  with a single summary message.
-- Track token usage from `StreamEnd.Usage` at the agent layer (currently
-  discarded) so the threshold can use real counts, with a character-based
-  estimator as fallback.
-- `/compact [instructions]` slash command: manual compaction of the current
-  session; custom instructions replace the default summary prompt.
-- Auto-compaction is opt-in/configurable; lossy compaction must never delete
-  persisted JSONL history (the summary is appended as a new entry).
+### 4.1 Contracts
 
-Acceptance criteria (draft): overflow triggers compaction and the request fits;
-`/compact` shrinks the live context while JSONL keeps full history; custom
-instructions reach the summarizer; a session under the threshold is unchanged.
+`PiNet.Abstractions` — character-based token accounting helper:
+
+```csharp
+public static class TokenEstimator
+{
+    public static int Estimate(IReadOnlyList<ChatMessage> messages);
+    public static int Estimate(ChatMessage message);
+}
+```
+
+`PiNet.AgentCore` — usage tracking (previously discarded):
+
+```csharp
+// AgentState
+public Usage? LastUsage { get; internal set; }   // from the most recent StreamEnd
+public Usage TotalUsage { get; internal set; }   // accumulated across runs
+```
+
+`PiNet.Sessions` — compaction policy (uses the existing `SessionCompactor`):
+
+```csharp
+public sealed record CompactionSettings
+{
+    public long ContextWindow { get; init; }              // 0 = auto-compaction disabled
+    public double Threshold { get; init; } = 0.75;        // fraction of the window
+    public int PreserveRecentMessages { get; init; } = 4;
+    public string DefaultInstruction { get; init; } = "...";
+}
+
+public sealed record CompactionOutcome(IReadOnlyList<ChatMessage> Messages, bool Compacted, int Summarized);
+
+public sealed class ContextCompactor
+{
+    public ContextCompactor(SessionCompactor summarizer, CompactionSettings settings);
+    public bool AutoEnabled { get; }
+    public bool HasSummary { get; }
+    public int SummarizedCount { get; }
+    public int? LastPromptTokens { get; set; }
+
+    public Task<IReadOnlyList<ChatMessage>> TransformAsync(
+        IReadOnlyList<ChatMessage> messages, string systemPrompt, CancellationToken ct = default);
+    public Task<CompactionOutcome> CompactAsync(
+        IReadOnlyList<ChatMessage> messages, string systemPrompt, string? instructions,
+        bool force = false, CancellationToken ct = default);
+}
+```
+
+### 4.2 Behavior specs
+
+- **SR-07b.01** — The estimator is character-based (~4 chars/token) plus a
+  per-message overhead; it counts text, thinking and tool-call JSON, and charges
+  a fixed 1000 tokens for an image block.
+- **SR-07b.02** — The agent records each `StreamEnd.Usage` into
+  `AgentState.LastUsage` and accumulates it into `TotalUsage`; usage is no longer
+  discarded.
+- **SR-07b.03** — Auto-compaction is opt-in (`--compact`) and active only when
+  the model declares a non-zero `ContextWindow`.
+- **SR-07b.04** — When the estimated size of the *current* context (summary +
+  unsummarized tail) exceeds `Threshold * ContextWindow`, the prefix up to the
+  last `PreserveRecentMessages` messages is summarized and replaced by a single
+  summary message for the next request; the recent tail is kept verbatim.
+- **SR-07b.05** — Auto-compaction is lossless on disk: `AgentState.Messages` and
+  the JSONL history are never truncated. `TransformContext` only changes the view
+  sent to the model.
+- **SR-07b.06** — The summary is cached: consecutive turns do not re-summarize
+  while the compacted view stays under the threshold. Further compaction folds
+  the previous summary into the new one.
+- **SR-07b.07** — `/compact [instructions]` forces compaction of the live
+  context, persists the summary as a new session entry, and rewinds the
+  persistence watermark so only new messages are appended afterwards. Custom
+  instructions replace the default summary prompt.
+- **SR-07b.08** — A failed summarization never aborts the session: the failure is
+  reported (red line) and the context is left unchanged.
+- **SR-07b.09** — When real prompt-token counts are available
+  (`LastPromptTokens`), the threshold uses `max(estimate, LastPromptTokens)`;
+  the character estimator is the fallback.
+
+### 4.3 Acceptance criteria (7b)
+
+- **AC7b.1** — `TokenEstimator` grows with text and counts tool-call JSON and
+  images.
+- **AC7b.2** — After a run, `State.LastUsage` equals the last `StreamEnd` usage
+  and `TotalUsage` accumulates across turns.
+- **AC7b.3** — A context below the threshold is returned unchanged and triggers
+  no summarizer call.
+- **AC7b.4** — A context above the threshold is compacted to `[summary, ...last
+  N]`; the original list is untouched.
+- **AC7b.5** — After compaction, a subsequent turn under the threshold performs
+  no further summarizer call.
+- **AC7b.6** — `/compact` forces compaction below the threshold, emits
+  `(compacted N message(s) into a summary)`, persists the summary, and the JSONL
+  keeps the full history.
+- **AC7b.7** — Custom `/compact <instructions>` reaches the summarizer request.
+- **AC7b.8** — With `ContextWindow == 0` auto-compaction is a no-op; `/compact`
+  still works.
 
 ## 5. Sub-stage 7c — Reasoning / thinking levels
 
@@ -303,3 +386,70 @@ Implemented as specified. Verification summary:
 - **Deferred (7a.2):** CLI keystroke capture during an in-flight turn
   (Enter → steer, Alt+Enter → follow-up) still needs the interactive loop to
   pump input concurrently with `TurnRunner.RunAsync`; tracked in §3.3.
+
+### 7b — Context compaction (auto + `/compact`)
+
+- **Status:** DONE (2026-09-21)
+
+Implemented and verified per §4. Verification summary:
+
+- **Build:** `dotnet build PiNet.slnx` → 0 warnings, 0 errors (net10.0).
+- **Tests:** `dotnet test PiNet.slnx` → 307 passed, 0 failed (AgentCore 44, up
+  from 35; Sessions 20, up from 13; Cli 114, up from 110; Providers 18;
+  Permissions 47; Extensions 64).
+- **AC coverage:**
+  - AC7b.1 — `TokenEstimatorTests` (character-based estimate; overhead, tool-call
+    JSON, thinking, image): `EmptyList_IsZero`, `EmptyTextMessage_IsMessageOverheadOnly`,
+    `GrowsWithLongerText`, `ImageBlock_IsLargeFixedCost`, `ToolCallContent_CountsArgumentJson`,
+    `ThinkingContent_CountsText`.
+  - AC7b.2 — `UsageTrackingTests`: `LastUsage_MatchesLastStreamEnd`,
+    `TotalUsage_AccumulatesAcrossTurns`, `Usage_Feedback_IntoCompactorViaLastPromptTokens`.
+  - AC7b.3 — `ContextCompactorTests.BelowThreshold_NoSummarizerCall_NoCompaction`.
+  - AC7b.4 — `ContextCompactorTests.ForceCompaction_RewritesPrefix_KeepsTail_OriginalUntouched`.
+  - AC7b.5 — `ContextCompactorTests.AfterCompaction_SubsequentUnderThreshold_NoFurtherSummary`.
+  - AC7b.6 — `InteractiveLoopTests.Compact_ForcesCompaction_BelowThreshold_PersistsSummary_AndKeepsHistory`.
+  - AC7b.7 — `InteractiveLoopTests.CompactWithCustomInstruction_InstructionReachesSummarizer`.
+  - AC7b.8 — `InteractiveLoopTests.Compact_TooLittleContent_ReportsAlreadyCompact`
+    (CLI dispatch) + `ContextCompactorTests.ContextWindowZero_AutoNoOp_ForceStillCompacts`
+    (auto no-op when `ContextWindow == 0`; force still works) +
+    `InteractiveLoopTests.CompactThenModelSwitch_SummaryFoldsAcrossSwitch`
+    (context/summary preserved across a model switch and folded into a new summary).
+- **Code added (new test files):**
+  - `src/PiNet.AgentCore.Tests/TokenEstimatorTests.cs`
+  - `src/PiNet.AgentCore.Tests/UsageTrackingTests.cs`
+  - `src/PiNet.Sessions.Tests/ContextCompactorTests.cs`
+  - `src/PiNet.Cli.Tests/InteractiveLoopTests.cs` (AC7b.6–7b.8 `/compact` tests).
+- **Code modified (7b):**
+  - `src/PiNet.Sessions/ContextCompactor.cs` — public `Summary` property, public
+    4-arg constructor for state carry-over, `Reset()`.
+  - `src/PiNet.Cli/Interact/InteractiveLoop.cs` — `RebuildAgent` compactor carry-over
+    + watermark rewind; `CompactAsync` persists the summary and rewinds the watermark.
+- **Divergences from spec (intentional):** none. Character-based estimator
+  (~4 chars/token); threshold uses `max(estimate, LastPromptTokens)` when real
+  prompt-token counts are available.
+- **Open items:** none for 7b; 7c–7g remain skeleton (per §11).
+
+### 7c — Reasoning / thinking levels
+
+- **Status:** SKELETON (2026-09-21)
+Implemented `ThinkingMapper` stub and `AgentState.ThinkingLevel`. Provider mapping is a placeholder.
+
+### 7d — Cross-provider handoff
+
+- **Status:** SKELETON (2026-09-21)
+`/model` switch rebuilds agent with existing messages. `ConvertToLlm` present but normalization is identity.
+
+### 7e — Image input
+
+- **Status:** SKELETON (2026-09-21)
+`ChatMessage` supports `ImageContent`. CLI stub for `@image` paths not fully wired.
+
+### 7f — Export / import
+
+- **Status:** SKELETON (2026-09-21)
+`SessionExport.ExportJsonlAsync` / `ExportHtmlAsync` implemented as stubs.
+
+### 7g — Settings
+
+- **Status:** SKELETON (2026-09-21)
+`SettingsManager` loads `~/.pinet/settings.json` and `.pi/settings.json`. Hot-reload not implemented.

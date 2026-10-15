@@ -12,6 +12,7 @@ public sealed record ChatRequest
     public IReadOnlyList<ToolDefinition>? Tools { get; init; }
     public double? Temperature { get; init; }
     public int? MaxTokens { get; init; }
+    public ThinkingLevel? ThinkingLevel { get; init; }
     public CancellationToken CancellationToken { get; init; }
 }
 

@@ -12,6 +12,7 @@ public sealed record ModelRequest(
     IReadOnlyList<ToolDefinition>? Tools = null,
     double? Temperature = null,
     int? MaxTokens = null,
+    ThinkingLevel? ThinkingLevel = null,
     CancellationToken CancellationToken = default);
 
 public interface IModelRunner

@@ -7,12 +7,22 @@ public sealed record SessionFileInfo(string SessionId, string Path, DateTime Las
 
 public sealed class SessionManager
 {
+    /// <summary>Environment variable that relocates the global session home (spec 07 §3, 7g).
+    /// Defaults to <c>~/.pinet</c> when unset.</summary>
+    public const string HomeEnvVar = "PI_NET_HOME";
+
     public string SessionsRoot { get; }
+
+    /// <summary>Global home (<c>PI_NET_HOME</c> override, else <c>~/.pinet</c>). Used to default the
+    /// session root to <c>~/.pinet/sessions</c> (or <c>$PI_NET_HOME/sessions</c>).)</summary>
+    public static string HomeDir =>
+        Environment.GetEnvironmentVariable(HomeEnvVar)
+        ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".pinet");
 
     public SessionManager(string? sessionsRoot = null)
     {
         SessionsRoot = sessionsRoot
-            ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".pinet", "sessions");
+            ?? Path.Combine(HomeDir, "sessions");
     }
 
     public string WorkingDirKey(string cwd) => SessionId.WorkingDirKey(cwd);

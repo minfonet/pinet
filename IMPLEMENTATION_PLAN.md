@@ -38,12 +38,31 @@ The original Pi project (TypeScript/Node.js) is structured as a monorepo with th
 | 4 — Interactive CLI & TUI | [DONE] verified (spec `docs/spec/04`) |
 | 5 — Permissions & Tool Security | [DONE] verified (spec `docs/spec/05`) |
 | 6 — Extensions & Skills | [DONE] verified (spec `docs/spec/06`) |
-| 7 — Advanced Features | [IN PROGRESS] 7a verified (spec `docs/spec/08`) |
+| 7 — Advanced Features | [IN PROGRESS] 7a steering/follow-up + 7b context compaction verified (spec `docs/spec/08`); 7c–7g skeleton |
 | 8 — Polish, Packaging & Release | [PENDING] |
 
 Verified baseline: `dotnet build PiNet.slnx` clean (0 warnings / 0 errors);
-`dotnet test PiNet.slnx` — 287 passing (18 Providers + 47 Permissions + 35
-AgentCore + 13 Sessions + 110 Cli + 64 Extensions).
+`dotnet test PiNet.slnx` — 307 passing (18 Providers + 47 Permissions + 44
+AgentCore + 20 Sessions + 114 Cli + 64 Extensions).
+
+### Recommended implementation order (remaining work)
+
+1. **7g — Settings** — `~/.pinet/settings.json` + `<cwd>/.pi/settings.json`,
+   `/settings` command; merge with project winning. Also fixes the `SessionManager`
+   session root to honor `PI_NET_HOME` (currently hard-coded to `~/.pinet/sessions`).
+2. **7c — Thinking levels** — add `ThinkingLevel?` to `ModelRequest`/`ChatRequest`
+   + `Agent` passes `State.ThinkingLevel`; provider mapping (OpenAI `reasoning_effort`,
+   Anthropic `thinking.enabled` + `budget_tokens`); persist `ThinkingContent`; `/thinking <level>` + `--thinking`.
+3. **7d — Cross-provider handoff** — faithful `ConvertToLlm` (normalize/drop
+   `ThinkingContent` per target provider) + `/model` picker with no argument.
+4. **7e — Image input** — `@image.png` editor expansion (resolve, base64, `ImageContent`
+   + inferred MIME), guarded by `ModelDefinition.SupportsVision`.
+5. **7f — Export / import** — standalone styled HTML export; JSONL export/import.
+6. **8 — Packaging / CI / Release** — CI, `dotnet tool` packaging, self-contained
+   publish, README quick-start, self-update.
+7. **Deferred** — 7a.2 in-flight keystroke capture (Enter → steer, Alt+Enter →
+   follow-up); network smoke tests (Stage 6 `install npm:`/`git:` + extension tool
+   invoked by a real LLM).
 
 ---
 
@@ -295,37 +314,40 @@ gateways); config guide in `docs/local-llms.md`.
 
 ---
 
-## Stage 7 — Advanced Features — [PENDING]
+## Stage 7 — Advanced Features — [IN PROGRESS]
 
 **Goal:** Feature parity with Pi's advanced capabilities.
 
 ### Deliverables
 
-- Steering & follow-up:
+- Steering & follow-up: ✅ verified
   - `SteerAsync(message)` — inject message while agent is running tools
   - `FollowUpAsync(message)` — queue message for after agent finishes
   - `SteeringMode` / `FollowUpMode`: `OneAtATime` (default) or `All`
-- Context compaction (advanced):
-  - Auto-trigger when approaching context window limit
-  - Custom compaction instructions
-  - Compaction summary preserves key decisions and file references
-- Cross-provider handoff:
-  - Switch model mid-session without losing context
-  - `convertToLlm` normalizes message format across providers
-- Reasoning/thinking levels:
-  - Unified `ThinkingLevel` enum: `Off`, `Minimal`, `Low`, `Medium`, `High`, `XHigh`, `Max`
-  - Per-provider mapping (Anthropic thinking, OpenAI reasoning_effort, Google thinking config)
-- Image input support:
-  - Paste images into editor, included as vision content
-  - `@image.png` file references
-- Export/import:
-  - Export session to HTML (standalone, styled)
-  - Export session to JSONL (for sharing)
-  - Import session from JSONL
-- Settings:
-  - `~/.pinet/settings.json` (global) + `.pi/settings.json` (project)
-  - `/settings` interactive editor
-  - Hot-reload on file change
+- Context compaction (auto + `/compact`): ✅ verified (7b)
+  - `TokenEstimator` (character-based, ~4 chars/token); auto-trigger when the
+    estimated context exceeds `Threshold * ContextWindow` (`--compact`,
+    `--compact-threshold`, `--compact-preserve`)
+  - `ContextCompactor` + `SessionCompactor`: summary cached, folded on re-compaction,
+    lossless on disk (JSONL preserves the full history)
+  - `/compact [instructions]` slash command: forces compaction, persists the summary
+    as a new entry, and rewinds the persistence watermark
+  - Usage tracking (`LastUsage`/`TotalUsage`) feeds the threshold via
+    `max(estimate, LastPromptTokens)`
+- Cross-provider handoff (7d): 🔄 skeleton
+  - `/model <provider>/<id>` already rebuilds the agent with current messages
+  - `ConvertToLlm` is an identity stub; must normalize content per target provider
+    (drop/replace `ThinkingContent` for providers that don't support it)
+  - `/model` picker with no argument (list providers/models, select) — pending
+- Reasoning/thinking levels (7c): 🔄 skeleton
+  - `ThinkingLevel` enum + `AgentState.ThinkingLevel` present; `ThinkingMapper` stub
+  - Provider mapping + `ThinkingContent` persistence pending
+- Image input support (7e): 🔄 skeleton
+  - `ImageContent` supported; `@image` editor expansion + vision guard not fully wired
+- Export/import (7f): 🔄 skeleton
+  - `SessionExport` stubs for JSONL/HTML; CLI commands pending
+- Settings (7g): 🔄 skeleton
+  - `SettingsManager` loads global/project JSON; `/settings` + hot-reload pending; `SessionManager` root via `PI_NET_HOME` pending
 
 ### Acceptance Criteria
 
@@ -336,9 +358,45 @@ gateways); config guide in `docs/local-llms.md`.
 
 ---
 
+## Pending Tests Summary
+
+The following acceptance criteria / features still lack dedicated unit/integration
+integration tests. (Stage 7b is fully covered — its rows below are marked ✅ Done;
+16 new tests were added in the 7b implementation.)
+
+| Stage | Feature / AC | Test Status | Notes |
+|-------|--------------|-------------|-------|
+| 1 | Provider credential fallback (`$ENV` → literal → default env) | Missing | `ConfigCredentialResolver` has basic tests; fallback chain not covered |
+| 1 | Token/cost tracking printed at `StreamEnd` | Missing | Integration test with `ScriptedProvider` needed |
+| 2 | `Agent.Abort()` cancels in-flight run and does not persist | Missing | Abort path tested partially, no abort-during-tool test |
+| 2 | Sequential tool execution mode | Missing | Only parallel mode exercised |
+| 2 | `AfterToolCall` mutation / termination hint | Missing | Hook invoked but mutation not asserted |
+| 3 | Session fork / clone and tree navigation | Partial | `SessionTests` covers CRUD, fork/clone not unit-tested |
+| 3 | Auto-compact trigger on context overflow | Missing | `CompactorTests` covers LLM summarization, not threshold auto-trigger |
+| 4 | `/model` switch persists across turns | Missing | Model switch tested in loop, persistence not asserted |
+| 4 | `/new` ephemeral session disables persistence | Missing | No test for `NoSession` path |
+| 4 | Ctrl+C on empty prompt exits with code 0 | Missing | Exit code not verified in tests |
+| 5 | Malformed permission config produces startup error | Missing | `ConfigTests` covers good/bad JSON, startup error path not tested |
+| 5 | `PI_NET_HOME` override for permissions | Missing | Only global load tested |
+| 6 | Extension host compilation cache reuse | Missing | `ExtensionHostTests` covers compile, not cache hit |
+| 6 | Skill `disable-model-invocation` frontmatter | Missing | Frontmatter parsed, flag not exercised |
+| 6 | Prompt template `${1:-default}` slice and unknown `$X` keep | Partial | `TemplateTests` covers basic, edge slices missing |
+| 7b | `TokenEstimator` accuracy and image/token counting | ✅ Done | `TokenEstimatorTests` (6 tests) |
+| 7b | `ContextCompactor` auto-compact threshold & caching | ✅ Done | `ContextCompactorTests` (7 tests) |
+| 7b | Manual `/compact` persists summary and rewinds watermark | ✅ Done | `InteractiveLoopTests` `/compact` (4 tests) |
+| 7b | Usage tracking `LastUsage/TotalUsage` accumulation | ✅ Done | `UsageTrackingTests` (3 tests) |
+| 7c-7g | Thinking levels, cross-provider handoff, image input, export/import, settings | Missing | Not started (recommended order: 7g → 7c → 7d → 7e → 7f) |
+
 ## Stage 8 — Polish, Packaging & Release — [PENDING]
 
 **Goal:** Production-ready release with documentation and CI/CD.
+
+### Deliverables
+
+- CLI packaging: `PackAsTool`, `ToolCommandName`, `install.ps1`/`install.sh`
+- Build & CI: `.github/workflows/ci.yml` builds and tests
+- Documentation: `docs/packaging.md`
+- Remaining: self-contained publish, NuGet publish, SBOM, telemetry opt-in
 
 ### Deliverables
 
@@ -389,12 +447,12 @@ pinet/
 │   ├── PiNet.Permissions/           # Permission gates and policies
 │   ├── PiNet.Extensions/            # [Stage 6] extension/skill/prompt discovery
 │   ├── PiNet.Cli/                   # Console app entry point (incl. interactive layer)
-│   ├── PiNet.AgentCore.Tests/       # 35 tests
-│   ├── PiNet.Sessions.Tests/        # 13 tests
+│   ├── PiNet.AgentCore.Tests/       # 44 tests
+│   ├── PiNet.Sessions.Tests/        # 20 tests
 │   ├── PiNet.Permissions.Tests/     # 47 tests
 │   ├── PiNet.Providers.Tests/       # 18 tests [spec 07]
 │   ├── PiNet.Extensions.Tests/      # 64 tests [Stage 6]
-│   └── PiNet.Cli.Tests/             # 110 tests
+│   └── PiNet.Cli.Tests/             # 114 tests
 ├── docs/                            # specs (01–08), ADRs, guides
 ├── .github/workflows/               # [Stage 8]
 ├── PiNet.slnx
@@ -433,5 +491,6 @@ reference `xunit` + `Microsoft.NET.Test.Sdk`.
 ---
 
 *Plan created: 2026-09-09*
+*Last updated: 2026-09-21 — 7a + 7b verified, 307 tests passing. Next per recommended order: 7g → 7c → 7d → 7e → 7f → Stage 8; see `STATUS.md`.*
 *Target: .NET 10 (preview → GA)*
 *Reference: https://github.com/earendil-works/pi*

@@ -53,4 +53,18 @@ public static class SessionStore
         while (await reader.ReadLineAsync(ct) is { } line)
             yield return line;
     }
+
+    /// <summary>Reads a session from an arbitrary stream (used by string imports).</summary>
+    public static async Task<List<SessionEntry>> ReadAllFromStreamAsync(Stream stream, CancellationToken ct = default)
+    {
+        var entries = new List<SessionEntry>();
+        using var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true, leaveOpen: true);
+        while (await reader.ReadLineAsync(ct) is { } line)
+        {
+            if (string.IsNullOrWhiteSpace(line))
+                continue;
+            entries.Add(SessionJson.ReadEntryLine(line));
+        }
+        return entries;
+    }
 }

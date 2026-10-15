@@ -4,6 +4,7 @@ using PiNet.AgentCore;
 using PiNet.AgentCore.Tools;
 using PiNet.Cli.Extensions;
 using PiNet.Cli.Interact;
+using PiNet.Cli.Settings;
 using PiNet.Extensions;
 using PiNet.Permissions;
 using PiNet.Providers;
@@ -32,8 +33,17 @@ internal static class Program
         if (args.Length > 0 && IsPackageSubcommand(args[0]))
             return await PackageCommands.RunAsync(args[1..]);
 
-        var providerId = "openai";
-        var modelId = "gpt-4o-mini";
+        var cwd = Environment.CurrentDirectory;
+        var settings = SettingsManager.Load(cwd);
+        foreach (var warning in settings.Warnings)
+            Console.Error.WriteLine($"[settings] {warning}");
+
+        // CLI flags that override settings defaults (null = flag not supplied).
+        string? cliProvider = null;
+        string? cliModel = null;
+        double? cliThreshold = null;
+        int? cliPreserve = null;
+        bool? cliAutoCompact = null;
         var printMode = false;
         var agentMode = false;
         var interactive = false;
@@ -54,10 +64,10 @@ internal static class Program
             switch (args[i])
             {
                 case "--provider" when i + 1 < args.Length:
-                    providerId = args[++i];
+                    cliProvider = args[++i];
                     break;
                 case "--model" when i + 1 < args.Length:
-                    modelId = args[++i];
+                    cliModel = args[++i];
                     break;
                 case "-p" or "--print":
                     printMode = true;
@@ -98,6 +108,17 @@ internal static class Program
                 case "--no-prompt-templates":
                     noTemplates = true;
                     break;
+                case "--compact":
+                    cliAutoCompact = true;
+                    break;
+                case "--compact-threshold" when i + 1 < args.Length:
+                    if (double.TryParse(args[++i], out var th))
+                        cliThreshold = th;
+                    break;
+                case "--compact-preserve" when i + 1 < args.Length:
+                    if (int.TryParse(args[++i], out var pr))
+                        cliPreserve = pr;
+                    break;
                 case "--list-models":
                     ListModels();
                     return 0;
@@ -110,6 +131,13 @@ internal static class Program
             }
         }
 
+        // Effective values: CLI flag wins, else settings, else hard default.
+        var providerId = cliProvider ?? settings.Provider ?? "openai";
+        var modelId = cliModel ?? settings.Model ?? "gpt-4o-mini";
+        var autoCompact = cliAutoCompact ?? settings.AutoCompact;
+        var compactThreshold = cliThreshold ?? settings.CompactThreshold;
+        var compactPreserve = cliPreserve ?? settings.CompactPreserveRecent;
+
         var prompt = string.Join(' ', prompts);
 
         if (interactive)
@@ -119,7 +147,7 @@ internal static class Program
                 Console.Error.WriteLine("Interactive mode requires an interactive terminal.");
                 return 1;
             }
-            return await InteractiveModeAsync(providerId, modelId, sessionRef, forkRef, continueLatest, noSession, approve, noApprove, noExtensions, noSkills, noTemplates);
+            return await InteractiveModeAsync(providerId, modelId, sessionRef, forkRef, continueLatest, noSession, approve, noApprove, noExtensions, noSkills, noTemplates, autoCompact, compactThreshold, compactPreserve, settings);
         }
 
         if (!Console.IsInputRedirected && string.IsNullOrWhiteSpace(prompt))
@@ -145,7 +173,7 @@ internal static class Program
             return await PrintModeAsync(providerId, modelId, prompt, apiKeyOverride, noExtensions, noSkills, noTemplates);
 
         if (agentMode)
-            return await AgentModeAsync(providerId, modelId, prompt, apiKeyOverride, sessionRef, forkRef, continueLatest, noSession, approve, noApprove, noExtensions, noSkills, noTemplates);
+            return await AgentModeAsync(providerId, modelId, prompt, apiKeyOverride, sessionRef, forkRef, continueLatest, noSession, approve, noApprove, noExtensions, noSkills, noTemplates, settings.ThinkingLevel);
 
         // No mode flag: default to one-shot print mode.
         return await PrintModeAsync(providerId, modelId, prompt, apiKeyOverride, noExtensions, noSkills, noTemplates);
@@ -238,7 +266,11 @@ internal static class Program
         bool noApprove,
         bool noExtensions,
         bool noSkills,
-        bool noTemplates)
+        bool noTemplates,
+        bool autoCompact = false,
+        double compactThreshold = 0.75,
+        int compactPreserve = 4,
+        EffectiveSettings? settings = null)
     {
         var registry = DefaultModelRegistry.Create();
         var chat = new ChatService(registry);
@@ -279,7 +311,11 @@ internal static class Program
             extensions: setup.Extensions,
             skills: setup.Skills,
             templates: setup.Templates,
-            systemPrompt: setup.SystemPrompt);
+            systemPrompt: setup.SystemPrompt,
+            autoCompact: autoCompact,
+            compactThreshold: compactThreshold,
+            compactPreserveRecent: compactPreserve,
+            settings: settings);
 
         return await loop.RunAsync(cts.Token);
     }
@@ -322,7 +358,8 @@ internal static class Program
         bool noApprove,
         bool noExtensions,
         bool noSkills,
-        bool noTemplates)
+        bool noTemplates,
+        Abstractions.Chat.ThinkingLevel? thinkingLevel = null)
     {
         var registry = DefaultModelRegistry.Create();
         var chat = new ChatService(registry);
@@ -395,7 +432,8 @@ internal static class Program
                 ProviderId = providerId,
                 ModelId = modelId,
                 Tools = tools,
-                Messages = initialMessages
+                Messages = initialMessages,
+                ThinkingLevel = thinkingLevel ?? Abstractions.Chat.ThinkingLevel.Off
             }
         });
 
@@ -471,7 +509,7 @@ internal static class Program
     private static void PrintHelp()
     {
         Console.WriteLine("""
-        Pi.NET — terminal coding harness (Stage 6)
+        Pi.NET — terminal coding harness (Stage 7)
 
         Usage:
           pinet --provider <provider> --model <model> -p "your prompt"
@@ -497,6 +535,9 @@ internal static class Program
           --no-skills          Disable skill discovery
           --no-prompt-templates Disable prompt template discovery
           --api-key <key>      API key (overrides env vars)
+          --compact            Enable automatic context compaction in interactive mode
+          --compact-threshold <0..1>  Compaction threshold fraction (default 0.75)
+          --compact-preserve <n>      Number of recent messages to keep verbatim (default 4)
           --list-models        List available models
           -h, --help           Show this help
         """);

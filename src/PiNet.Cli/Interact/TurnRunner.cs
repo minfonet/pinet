@@ -41,6 +41,13 @@ public sealed class TurnRunner : IDisposable
         Session = null;
     }
 
+    /// <summary>
+    /// Marks the first <paramref name="count"/> agent messages as already
+    /// persisted, so subsequent turns only append new messages. Used after
+    /// manual compaction rewrites the live context.
+    /// </summary>
+    public void MarkPersisted(int count) => PriorMessageCount = count;
+
     public async Task<TurnResult> RunAsync(string prompt, CancellationToken ct)
     {
         try

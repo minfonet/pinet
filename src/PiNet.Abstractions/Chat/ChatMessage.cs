@@ -1,6 +1,18 @@
+using System.Text.Json;
+
 namespace PiNet.Abstractions.Chat;
 
-using System.Text.Json;
+public enum ThinkingLevel
+{
+    Off,
+    Minimal,
+    Low,
+    Medium,
+    High,
+    XHigh,
+    Max
+}
+
 
 public enum ChatRole
 {
@@ -30,8 +42,24 @@ public sealed record ChatMessage(
     public static ChatMessage User(string text) =>
         new(ChatRole.User, [new TextContent(text)], Timestamp: DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
 
+    public static ChatMessage User(params ContentBlock[] blocks) =>
+        new(ChatRole.User, blocks.Length == 0 ? [new TextContent(string.Empty)] : blocks,
+            Timestamp: DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+
+    public static ChatMessage User(IReadOnlyList<ContentBlock> blocks) =>
+        new(ChatRole.User, blocks.Count == 0 ? [new TextContent(string.Empty)] : blocks,
+            Timestamp: DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+
     public static ChatMessage Assistant(string text) =>
         new(ChatRole.Assistant, [new TextContent(text)], Timestamp: DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+
+    public static ChatMessage Assistant(params ContentBlock[] blocks) =>
+        new(ChatRole.Assistant, blocks.Length == 0 ? [new TextContent(string.Empty)] : blocks,
+            Timestamp: DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+
+    public static ChatMessage Assistant(IReadOnlyList<ContentBlock> blocks) =>
+        new(ChatRole.Assistant, blocks.Count == 0 ? [new TextContent(string.Empty)] : blocks,
+            Timestamp: DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
 
     public static ChatMessage Tool(string toolCallId, string toolName, string text, bool isError = false) =>
         new(ChatRole.Tool, [new TextContent(text)], ToolCallId: toolCallId, IsError: isError,

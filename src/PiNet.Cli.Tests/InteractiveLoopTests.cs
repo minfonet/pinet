@@ -1,6 +1,7 @@
 using PiNet.Abstractions.Chat;
 using PiNet.Abstractions.Providers;
 using PiNet.Cli.Interact;
+using PiNet.Cli.Settings;
 using PiNet.Providers;
 using PiNet.Sessions;
 using Xunit;
@@ -13,7 +14,8 @@ namespace PiNet.Cli.Tests;
 /// </summary>
 public class InteractiveLoopTests
 {
-    private sealed class Fixture : IDisposable
+    // Internal so the serial /settings + PI_NET_HOME tests (SettingsTests) can reuse it.
+    internal sealed class Fixture : IDisposable
     {
         public string Cwd { get; }
         public string Root { get; }
@@ -35,7 +37,8 @@ public class InteractiveLoopTests
         public void Dispose() => _disposer.Dispose();
     }
 
-    private static InteractiveLoop NewLoop(
+    // Internal so the serial /settings + PI_NET_HOME tests (SettingsTests) can reuse it.
+    internal static InteractiveLoop NewLoop(
         Fixture fx,
         ScriptedInput input,
         CapturingOutput output,
@@ -43,7 +46,8 @@ public class InteractiveLoopTests
         string modelId = "faux-model",
         bool noSession = false,
         string? sessionRef = null,
-        string? forkRef = null) =>
+        string? forkRef = null,
+        EffectiveSettings? settings = null) =>
         new(chat: fx.Chat,
             manager: fx.Manager,
             cwd: fx.Cwd,
@@ -53,7 +57,8 @@ public class InteractiveLoopTests
             output: output,
             noSession: noSession,
             sessionRef: sessionRef,
-            forkRef: forkRef);
+            forkRef: forkRef,
+            settings: settings);
 
     // --- AC1: multi-prompt session persists across turns -------------------
 
@@ -481,5 +486,161 @@ public class InteractiveLoopTests
 
         Assert.Equal(0, code);
         Assert.Empty(fx.Manager.ListSessions(fx.Cwd));
+    }
+
+    // --- 7b: /compact (manual compaction) -------------------------------------
+
+    private static IReadOnlyList<ChatMessage> CompactSeed()
+    {
+        return [
+            ChatMessage.User("question one"),
+            ChatMessage.Assistant("answer one"),
+            ChatMessage.User("question two"),
+            ChatMessage.Assistant("answer two"),
+            ChatMessage.User("question three"),
+            ChatMessage.Assistant("answer three")
+        ];
+    }
+
+    private static async Task<IReadOnlyList<SessionEntry>> ReadEntriesAsync(SessionManager manager, string cwd, string sessionId) =>
+        await SessionStore.ReadAllAsync(manager.SessionFilePath(cwd, sessionId));
+
+    private static string JoinText(IReadOnlyList<SessionEntry> entries) =>
+        string.Join("\n", entries.Select(e => e.ToMessage().TryGetText() ?? string.Empty));
+
+    [Fact]
+    public async Task Compact_ForcesCompaction_BelowThreshold_PersistsSummary_AndKeepsHistory()
+    {
+        using var fx = new Fixture();
+        var provider = new ScriptedProvider("faux")
+            .Enqueue("SUMMARY: first three messages")
+            .Enqueue("Hello from model");
+        fx.Registry.RegisterProvider(provider);
+
+        var session = fx.Manager.CreateSession(fx.Cwd, CompactSeed());
+
+        var input = new ScriptedInput(
+        [
+            ..Keys.Type("/compact"), Keys.Enter,
+            ..Keys.Type("hello"), Keys.Enter,
+            ..Keys.Type("/quit"), Keys.Enter
+        ]);
+        var output = new CapturingOutput();
+        var loop = NewLoop(fx, input, output, sessionRef: session.Id);
+
+        var code = await loop.RunAsync();
+
+        Assert.Equal(0, code);
+        Assert.Equal(2, provider.StreamCalls); // 1 compaction + 1 hello turn
+        Assert.Contains("(compacted 2 message(s) into a summary)", output.All);
+
+        var files = fx.Manager.ListSessions(fx.Cwd);
+        Assert.Single(files);
+        var entries = await ReadEntriesAsync(fx.Manager, fx.Cwd, files[0].SessionId);
+        // Full original history retained; summary additive; hello turn persisted.
+        Assert.Equal(9, entries.Count);
+        var all = JoinText(entries);
+        Assert.Contains("question one", all);
+        Assert.Contains("answer three", all);
+        Assert.Contains("SUMMARY: first three messages", all);
+        Assert.Contains("Hello from model", all);
+        Assert.Contains("<summary of earlier conversation>", all);
+    }
+
+    [Fact]
+    public async Task CompactWithCustomInstruction_InstructionReachesSummarizer()
+    {
+        using var fx = new Fixture();
+        var provider = new ScriptedProvider("faux").Enqueue("CUSTOM-SUMMARY");
+        fx.Registry.RegisterProvider(provider);
+
+        var session = fx.Manager.CreateSession(fx.Cwd, CompactSeed());
+
+        var input = new ScriptedInput(
+        [
+            ..Keys.Type("/compact summarize the tooling and decisions"), Keys.Enter,
+            ..Keys.Type("/quit"), Keys.Enter
+        ]);
+        var output = new CapturingOutput();
+        var loop = NewLoop(fx, input, output, sessionRef: session.Id);
+
+        var code = await loop.RunAsync();
+
+        Assert.Equal(0, code);
+        Assert.Equal(1, provider.StreamCalls);
+        Assert.Contains("(compacted 2 message(s) into a summary)", output.All);
+
+        // The custom instruction is sent to the summarizer (first request),
+        // together with the conversation to be summarized.
+        var compactionPrompt = provider.Requests[0].Messages[0].TryGetText();
+        Assert.Contains("summarize the tooling and decisions", compactionPrompt);
+        Assert.Contains("question one", compactionPrompt);
+    }
+
+    [Fact]
+    public async Task CompactThenModelSwitch_SummaryFoldsAcrossSwitch()
+    {
+        using var fx = new Fixture();
+        var p1 = new ScriptedProvider("p1").Enqueue("S1: first summary");
+        var p2 = new ScriptedProvider("p2").Enqueue("S2: folded summary");
+        fx.Registry.RegisterProvider(p1);
+        fx.Registry.RegisterProvider(p2);
+
+        var session = fx.Manager.CreateSession(fx.Cwd, CompactSeed());
+
+        var input = new ScriptedInput(
+        [
+            ..Keys.Type("/compact"), Keys.Enter,
+            ..Keys.Type("/model p2/p2-model"), Keys.Enter,
+            ..Keys.Type("/compact"), Keys.Enter,
+            ..Keys.Type("/quit"), Keys.Enter
+        ]);
+        var output = new CapturingOutput();
+        var loop = NewLoop(fx, input, output, providerId: "p1", modelId: "p1-model", sessionRef: session.Id);
+
+        var code = await loop.RunAsync();
+
+        Assert.Equal(0, code);
+        Assert.Contains("(model: p2/p2-model)", output.All);
+        Assert.Equal(1, p1.StreamCalls);
+        Assert.Equal(1, p2.StreamCalls);
+
+        var files = fx.Manager.ListSessions(fx.Cwd);
+        Assert.Single(files);
+        var entries = await ReadEntriesAsync(fx.Manager, fx.Cwd, files[0].SessionId);
+        // 6 seed + 2 summaries; original history retained.
+        Assert.Equal(8, entries.Count);
+        var all = JoinText(entries);
+        Assert.Contains("S1: first summary", all);
+        Assert.Contains("S2: folded summary", all);
+
+        // The second compaction (p2) must have folded the first summary in.
+        var secondPrompt = p2.Requests[0].Messages[0].TryGetText();
+        Assert.Contains("S1: first summary", secondPrompt);
+    }
+
+    [Fact]
+    public async Task Compact_TooLittleContent_ReportsAlreadyCompact()
+    {
+        using var fx = new Fixture();
+        var provider = new ScriptedProvider("faux");
+        fx.Registry.RegisterProvider(provider);
+
+        var session = fx.Manager.CreateSession(fx.Cwd, [ChatMessage.User("just one message")]);
+
+        var input = new ScriptedInput(
+        [
+            ..Keys.Type("/compact"), Keys.Enter,
+            ..Keys.Type("/quit"), Keys.Enter
+        ]);
+        var output = new CapturingOutput();
+        var loop = NewLoop(fx, input, output, sessionRef: session.Id);
+
+        await loop.RunAsync();
+
+        Assert.Contains("(context already compact)", output.All);
+        Assert.Equal(0, provider.StreamCalls);
+        var entries = await ReadEntriesAsync(fx.Manager, fx.Cwd, session.Id);
+        Assert.Single(entries); // nothing added
     }
 }

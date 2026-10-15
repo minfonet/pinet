@@ -2,6 +2,7 @@ using PiNet.Abstractions.Chat;
 using PiNet.AgentCore;
 using PiNet.AgentCore.Tools;
 using PiNet.Cli.Extensions;
+using PiNet.Cli.Settings;
 using PiNet.Extensions;
 using PiNet.Permissions;
 using PiNet.Providers;
@@ -23,8 +24,14 @@ public sealed class InteractiveLoop
     private readonly SkillRegistry? _skills;
     private readonly IReadOnlyList<PromptTemplate> _templates;
     private readonly string? _systemPrompt;
+    private readonly bool _autoCompact;
+    private readonly double _compactThreshold;
+    private readonly int _compactPreserveRecent;
     private readonly IReadOnlyList<AgentTool> _agentTools;
     private readonly List<string> _extensionWarnings;
+    private readonly EffectiveSettings? _settings;
+    private readonly ThinkingLevel? _defaultThinkingLevel;
+    private readonly bool _verbose;
 
     private readonly LineEditor _editor = new();
     private readonly LineHistory _history = new();
@@ -34,8 +41,11 @@ public sealed class InteractiveLoop
     private Session? _session;
     private Agent? _agent;
     private TurnRunner? _runner;
+    private ContextCompactor? _compactor;
     private CancellationTokenSource? _activeTurn;
     private LineState _renderState = LineState.Empty;
+
+    private string SystemPromptText => _systemPrompt ?? CliConfig.DefaultSystemPrompt;
 
     public InteractiveLoop(
         ChatService chat,
@@ -55,7 +65,11 @@ public sealed class InteractiveLoop
         ExtensionHost? extensions = null,
         SkillRegistry? skills = null,
         IReadOnlyList<PromptTemplate>? templates = null,
-        string? systemPrompt = null)
+        string? systemPrompt = null,
+        bool autoCompact = false,
+        double compactThreshold = 0.75,
+        int compactPreserveRecent = 4,
+        EffectiveSettings? settings = null)
     {
         _chat = chat;
         _manager = manager;
@@ -75,7 +89,13 @@ public sealed class InteractiveLoop
         _skills = skills;
         _templates = templates ?? [];
         _systemPrompt = systemPrompt;
+        _autoCompact = autoCompact;
+        _compactThreshold = compactThreshold;
+        _compactPreserveRecent = compactPreserveRecent;
         _extensionWarnings = [];
+        _settings = settings;
+        _defaultThinkingLevel = settings?.ThinkingLevel;
+        _verbose = settings?.Verbose ?? false;
         _agentTools = AdaptExtensionTools();
     }
 
@@ -103,6 +123,14 @@ public sealed class InteractiveLoop
         var seed = await StartupAsync(hostCt);
         RebuildAgent(_provider, _model, seed);
         PrintWarnings();
+
+        if (_verbose)
+        {
+            var thinking = _agent?.State.ThinkingLevel ?? ThinkingLevel.Off;
+            _out.WriteLine($"[verbose] {_provider}/{_model} · thinking={thinking}", ConsoleColor.DarkGray);
+            if (_settings is not null)
+                _out.WriteLine($"[verbose] settings: global={_settings.GlobalPath} project={_settings.ProjectPath}", ConsoleColor.DarkGray);
+        }
 
         while (!hostCt.IsCancellationRequested)
         {
@@ -208,25 +236,68 @@ public sealed class InteractiveLoop
         var tools = new List<AgentTool>(BuiltInTools.All());
         tools.AddRange(_agentTools);
 
+        var systemPrompt = SystemPromptText;
+        var contextWindow = _chat.GetModel(providerId, modelId)?.ContextWindow ?? 0;
+
+        var settings = new CompactionSettings
+        {
+            ContextWindow = contextWindow,
+            Threshold = _compactThreshold,
+            PreserveRecentMessages = _compactPreserveRecent
+        };
+
+        // Preserve compaction state across a rebuild only when the live context is the
+        // same in-memory message list (a mid-session model switch, or an ephemeral
+        // toggle). When the context is reloaded from a session, the previous context's
+        // summary no longer applies, so start fresh.
+        var keepCompactorState = _compactor is not null &&
+            ReferenceEquals(messages, _agent?.State.Messages);
+        var existingSummary = _compactor?.Summary;
+        var existingCount = _compactor?.SummarizedCount ?? 0;
+
+        _compactor = keepCompactorState
+            ? new ContextCompactor(
+                new SessionCompactor(_chat, providerId, modelId),
+                settings,
+                existingSummary,
+                existingCount)
+            : new ContextCompactor(new SessionCompactor(_chat, providerId, modelId), settings);
+        var compactor = _compactor;
+
         _agent = new Agent(new AgentOptions
         {
             Runner = _chat,
+            TransformContext = _autoCompact
+                ? (msgs, ct) =>
+                {
+                    compactor.LastPromptTokens = _agent?.State.LastUsage is { } u ? u.InputTokens : null;
+                    return compactor.TransformAsync(msgs, systemPrompt, ct);
+                }
+                : null,
             BeforeToolCall = _permissions is not null && _permissionPrompt is not null
                 ? PermissionGate.Create(_permissions, _permissionPrompt, _cwd)
                 : null,
             InitialState = new AgentState
             {
-                SystemPrompt = _systemPrompt ?? CliConfig.DefaultSystemPrompt,
+                SystemPrompt = systemPrompt,
                 ProviderId = providerId,
                 ModelId = modelId,
                 Tools = tools,
-                Messages = new List<ChatMessage>(messages)
+                Messages = new List<ChatMessage>(messages),
+                // Settings default (spec 7g). 7c /thinking and --thinking override this at runtime.
+                ThinkingLevel = _defaultThinkingLevel ?? ThinkingLevel.Off
             }
         });
 
         _runner = new TurnRunner(_agent, _cwd, _manager, NoSession);
         if (_session is not null)
+        {
             _runner.AttachSession(_session);
+            // The in-memory context may be a compacted view whose length differs from
+            // the persisted session entry count; the watermark must index the live
+            // context, not the full history.
+            _runner.MarkPersisted(_agent.State.Messages.Count);
+        }
         _runner.AgentEventSink += RenderEventAsync;
     }
 
@@ -286,6 +357,12 @@ public sealed class InteractiveLoop
             case SlashCommandKind.Trust:
                 await TrustProjectAsync(command.Arg, hostCt);
                 return true;
+            case SlashCommandKind.Compact:
+                await CompactAsync(command.Arg, hostCt);
+                return true;
+            case SlashCommandKind.Settings:
+                await SettingsCommandAsync(command.Arg, hostCt);
+                return true;
             case SlashCommandKind.Skill:
                 await DispatchSkillAsync(command.Name, command.Arg, hostCt);
                 return true;
@@ -342,6 +419,62 @@ public sealed class InteractiveLoop
 
     private static IReadOnlyList<string> SplitArgs(string? args) =>
         string.IsNullOrWhiteSpace(args) ? [] : args.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+
+    /// <summary> /settings (view) or /settings key value (edit the global file). </summary>
+    private async Task SettingsCommandAsync(string? arg, CancellationToken hostCt)
+    {
+        if (_settings is null)
+        {
+            _out.WriteLine("No settings loaded.", ConsoleColor.Red);
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(arg))
+        {
+            PrintSettingsSummary();
+            return;
+        }
+
+        var parts = SplitArgs(arg);
+        if (parts.Count < 2)
+        {
+            _out.WriteLine("Usage: /settings key value   (or /settings to view)");
+            return;
+        }
+
+        var key = parts[0];
+        var value = parts[1];
+        var warning = SettingsManager.SetGlobal(key, value);
+        if (warning is not null)
+            _out.WriteLine($"[settings] {warning}", ConsoleColor.Red);
+        else
+            _out.WriteLine($"(global {key} = {value} -> {_settings.GlobalPath})");
+    }
+
+    private void PrintSettingsSummary()
+    {
+        var s = _settings;
+        if (s is null)
+        {
+            _out.WriteLine("No settings loaded.", ConsoleColor.Red);
+            return;
+        }
+
+        _out.WriteLine("Effective settings (project wins over global):");
+        _out.WriteLine($"  provider       {(s.Provider is null ? "openai" : s.Provider)}    [{SourceOf(s.Project?.Provider, s.Global?.Provider)}]");
+        _out.WriteLine($"  model          {(s.Model is null ? "gpt-4o-mini" : s.Model)}    [{SourceOf(s.Project?.Model, s.Global?.Model)}]");
+        _out.WriteLine($"  thinking       {(s.ThinkingLevel is null ? "Off" : s.ThinkingLevel)}    [{SourceOf(s.Project?.ThinkingLevel, s.Global?.ThinkingLevel)}]");
+        _out.WriteLine($"  compact        threshold {s.CompactThreshold:F2} / keep {s.CompactPreserveRecent}    [{SourceOf(s.Project?.CompactThreshold, s.Global?.CompactThreshold)}]");
+        _out.WriteLine($"  autoCompact    {(s.AutoCompact ? "on" : "off")}    [{SourceOf(s.Project?.AutoCompact, s.Global?.AutoCompact)}]");
+        _out.WriteLine($"  verbose        {(s.Verbose ? "on" : "off")}    [{SourceOf(s.Project?.Verbose, s.Global?.Verbose)}]");
+        _out.WriteLine($"  global    {s.GlobalPath}{(s.Global is null ? "  (missing)" : "")}");
+        _out.WriteLine($"  project   {s.ProjectPath}{(s.Project is null ? "  (missing)" : "")}");
+        foreach (var warning in s.Warnings)
+            _out.WriteLine($"  ! {warning}", ConsoleColor.Red);
+    }
+
+    private static string SourceOf<T>(T? project, T? global) =>
+        project is not null ? "project" : global is not null ? "global" : "default";
 
     private void StartEphemeral()
     {
@@ -411,15 +544,39 @@ public sealed class InteractiveLoop
 
     private void SwitchModel(string? arg)
     {
-        var parts = (arg ?? string.Empty).Split('/', StringSplitOptions.RemoveEmptyEntries);
-        if (parts.Length != 2 || _chat.GetModel(parts[0], parts[1]) is null)
+        var trimmed = (arg ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(trimmed))
         {
-            _out.WriteLine($"Unknown model: {arg ?? string.Empty}", ConsoleColor.Red);
+            // Show available models grouped by provider
+            var models = _chat.GetModels();
+            var grouped = models.GroupBy(m => m.Provider, StringComparer.OrdinalIgnoreCase).OrderBy(g => g.Key);
+            _out.WriteLine("Available models (/model provider/id):");
+            foreach (var g in grouped)
+            {
+                _out.WriteLine($"  [{g.Key}]");
+                foreach (var m in g.OrderBy(x => x.Id, StringComparer.OrdinalIgnoreCase))
+                    _out.WriteLine($"    {m.Id}  ({m.Name})");
+            }
             return;
         }
 
-        _provider = parts[0];
-        _model = parts[1];
+        var parts = trimmed.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length != 2)
+        {
+            _out.WriteLine($"Usage: /model <provider>/<id> (or /model to list)", ConsoleColor.Red);
+            return;
+        }
+
+        var provider = parts[0];
+        var model = parts[1];
+        if (_chat.GetModel(provider, model) is null)
+        {
+            _out.WriteLine($"Unknown model: {provider}/{model}", ConsoleColor.Red);
+            return;
+        }
+
+        _provider = provider;
+        _model = model;
         RebuildAgent(_provider, _model, _agent?.State.Messages ?? []);
         _out.WriteLine($"(model: {_provider}/{_model})");
     }
@@ -450,6 +607,45 @@ public sealed class InteractiveLoop
         catch (PermissionConfigException ex)
         {
             _out.WriteLine(ex.Message, ConsoleColor.Red);
+        }
+    }
+
+    private async Task CompactAsync(string? arg, CancellationToken ct)
+    {
+        if (_compactor is null || _agent is null)
+        {
+            _out.WriteLine("Compact is not available.", ConsoleColor.Red);
+            return;
+        }
+
+        try
+        {
+            var messages = _agent.State.Messages;
+            var outcome = await _compactor.CompactAsync(messages, SystemPromptText, arg, force: true, ct);
+            if (!outcome.Compacted)
+            {
+                _out.WriteLine("(context already compact)", ConsoleColor.DarkGray);
+                return;
+            }
+
+            // Persist the summary as a new, additive session entry so the compaction
+            // survives restarts; the full original history stays in the JSONL file.
+            if (_session is not null)
+            {
+                if (_compactor.Summary is { } summary)
+                    _session.AppendMessage(summary);
+                await _manager.AppendAsync(_session, _cwd, ct);
+            }
+
+            _agent.State.Messages = new List<ChatMessage>(outcome.Messages).AsReadOnly();
+            _runner?.MarkPersisted(outcome.Messages.Count);
+            _compactor.Reset();
+
+            _out.WriteLine($"(compacted {outcome.Summarized} message(s) into a summary)", ConsoleColor.DarkGray);
+        }
+        catch (Exception ex)
+        {
+            _out.WriteLine($"Compact failed: {ex.Message}", ConsoleColor.Red);
         }
     }
 
@@ -517,6 +713,7 @@ public sealed class InteractiveLoop
                 "fork" => "/fork <id|path>  — fork a session and continue it",
                 "model" => "/model <provider>/<id>  — switch models",
                 "trust" => "/trust [off]  — trust this project (bash without prompt) / untrust",
+                "compact" => "/compact [instructions]  — manually compact the session context",
                 "unknown" => "unknown command (try /help)",
                 _ => null
             };
@@ -532,6 +729,7 @@ public sealed class InteractiveLoop
         _out.WriteLine("  /fork <id|path>        fork a session and continue it");
         _out.WriteLine("  /model <provider>/<id> switch models");
         _out.WriteLine("  /trust [off]           trust this project (bash without prompt) / untrust");
+        _out.WriteLine("  /compact [instructions] manually compact the session context");
 
         if (_extensions is not null && _extensions.Commands.Count > 0)
         {
@@ -569,5 +767,51 @@ public sealed class InteractiveLoop
             : age.TotalHours < 1 ? $"{(int)age.TotalMinutes}m ago"
             : age.TotalDays < 1 ? $"{(int)age.TotalHours}h ago"
             : $"{(int)age.TotalDays}d ago";
+    }
+
+    private static string InferMime(string path)
+    {
+        var ext = Path.GetExtension(path).ToLowerInvariant();
+        return ext switch
+        {
+            ".png" => "image/png",
+            ".jpg" or ".jpeg" => "image/jpeg",
+            ".gif" => "image/gif",
+            ".webp" => "image/webp",
+            ".bmp" => "image/bmp",
+            ".svg" => "image/svg+xml",
+            _ => "application/octet-stream"
+        };
+    }
+
+    private async Task<(string Text, System.Collections.Generic.List<Abstractions.Chat.ImageContent> Images)?> ExpandImagesAsync(string text)
+    {
+        if (string.IsNullOrEmpty(text))
+            return (text, new System.Collections.Generic.List<Abstractions.Chat.ImageContent>());
+        var images = new System.Collections.Generic.List<Abstractions.Chat.ImageContent>();
+        // Simple tokenization: find @path tokens
+        var parts = text.Split(new[] { ' ', '\t', '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries);
+        var kept = new System.Collections.Generic.List<string>();
+        foreach (var p in parts)
+        {
+            if (p.StartsWith("@") && (p.EndsWith(".png") || p.EndsWith(".jpg") || p.EndsWith(".jpeg") || p.EndsWith(".gif") || p.EndsWith(".webp") || p.EndsWith(".bmp") || p.EndsWith(".svg")))
+            {
+                var path = p.Substring(1);
+                try
+                {
+                    var full = Path.IsPathRooted(path) ? path : Path.Combine(Environment.CurrentDirectory, path);
+                    if (File.Exists(full))
+                    {
+                        var bytes = await File.ReadAllBytesAsync(full);
+                        var b64 = Convert.ToBase64String(bytes);
+                        images.Add(new Abstractions.Chat.ImageContent(b64, InferMime(full)));
+                        continue;
+                    }
+                }
+                catch { }
+            }
+            kept.Add(p);
+        }
+        return (string.Join(" ", kept), images);
     }
 }

@@ -212,6 +212,7 @@ public sealed class Agent
         CancellationToken ct)
     {
         var text = new StringBuilder();
+        var thinking = new StringBuilder();
         var toolCalls = new List<ToolCallContent>();
         ToolCallAccumulator? current = null;
 
@@ -223,6 +224,7 @@ public sealed class Agent
             State.SystemPrompt,
             llmMessages,
             BuildToolDefinitions(),
+            ThinkingLevel: State.ThinkingLevel,
             CancellationToken: ct);
 
         await foreach (var evt in _runner.GenerateAsync(request).WithCancellation(ct))
@@ -234,6 +236,7 @@ public sealed class Agent
                     await EmitAsync(new MessageUpdateEvent(t.Delta), ct);
                     break;
                 case ThinkingDelta th:
+                    thinking.Append(th.Delta);
                     await EmitAsync(new MessageUpdateEvent(th.Delta, IsThinking: true), ct);
                     break;
                 case ToolCallStart tcs:
@@ -248,6 +251,9 @@ public sealed class Agent
                     toolCalls.Add(new ToolCallContent(detail.Id, detail.Name, ParseArguments(detail.ArgumentsJson)));
                     current = null;
                     break;
+                case StreamEnd end:
+                    State.RecordUsage(end.Usage);
+                    break;
                 case StreamError err when err.IsAborted:
                     throw new OperationCanceledException("Aborted by user.");
                 case StreamError err:
@@ -256,6 +262,8 @@ public sealed class Agent
         }
 
         var content = new List<ContentBlock>();
+        if (thinking.Length > 0)
+            content.Add(new ThinkingContent(thinking.ToString()));
         if (text.Length > 0)
             content.Add(new TextContent(text.ToString()));
         content.AddRange(toolCalls);

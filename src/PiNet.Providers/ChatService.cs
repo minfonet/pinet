@@ -23,6 +23,7 @@ public sealed class ChatService : IModelRunner
             request.Tools,
             request.Temperature,
             request.MaxTokens,
+            request.ThinkingLevel,
             request.CancellationToken);
 
     public IReadOnlyList<ModelDefinition> GetModels(string? providerId = null) =>
@@ -39,6 +40,7 @@ public sealed class ChatService : IModelRunner
         IReadOnlyList<ToolDefinition>? tools = null,
         double? temperature = null,
         int? maxTokens = null,
+        Abstractions.Chat.ThinkingLevel? thinkingLevel = null,
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct = default)
     {
         var provider = _registry.GetProvider(providerId);
@@ -58,6 +60,7 @@ public sealed class ChatService : IModelRunner
             Tools = tools,
             Temperature = temperature,
             MaxTokens = maxTokens,
+            ThinkingLevel = thinkingLevel,
             CancellationToken = ct
         };
 

@@ -9,10 +9,10 @@ with **Spec-Driven Development** (spec first, then verify against the running CL
 
 | Item | State |
 |------|-------|
-| Stages | **1–6 + spec 07 verified**; **Stage 7 in progress** (7a steering/follow-up verified) |
+| Stages | **1–6 + spec 07 verified**; **Stage 7 in progress** (7a verified, 7b skeleton) |
 | Build | `dotnet build PiNet.slnx` — clean (0 warnings, 0 errors) |
 | Tests | **287 passing** (see verification commands below) |
-| Next | Stage 7b — Context compaction |
+| Next | Stage 7b — Context compaction verification + tests |
 
 See [`STATUS.md`](STATUS.md) and [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md)
 for the full stage-by-stage record.
@@ -31,6 +31,14 @@ dotnet run --project src/PiNet.Cli -- --list-models
 # Interactive loop
 dotnet run --project src/PiNet.Cli -- -i
 ```
+
+### Install as global tool
+```bash
+dotnet tool install -g PiNet
+pinet --help
+```
+
+See `docs/packaging.md` for packaging details.
 
 Set `OPENAI_API_KEY` (or `ANTHROPIC_API_KEY`) to talk to a real model:
 
