@@ -52,6 +52,15 @@ This folder contains all project documentation, written using the **Spec-Driven 
 | [local-llms.md](local-llms.md) | Local & custom LLM providers via `~/.pinet/models.json` (Ollama, LM Studio, vLLM, …) |
 | [packaging.md](packaging.md) | Packaging & distribution (tool install, install scripts, CI) |
 
+### Project records
+
+| Doc | Topic |
+|-----|-------|
+| [`../STATUS.md`](../STATUS.md) | Current status, test counts and stage-by-stage record |
+| [`../IMPLEMENTATION_PLAN.md`](../IMPLEMENTATION_PLAN.md) | Full stage plan and remaining/deferred work |
+| [`../CHANGELOG.md`](../CHANGELOG.md) | Release-notes style history of every stage |
+| [implementation/](implementation/) | Implementation notes per sub-stage (07c–08) |
+
 ### Scripts
 
 | Doc | Topic |

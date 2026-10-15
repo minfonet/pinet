@@ -14,8 +14,8 @@ with **Spec-Driven Development** (spec first, then verify against the running CL
 | Tests | **371 passing** (see verification commands below) |
 | Next | Publish the first package (`dotnet pack` + `dotnet nuget push`, or push a `v*` tag with `NUGET_API_KEY` set) |
 
-See [`STATUS.md`](STATUS.md) and [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md)
-for the full stage-by-stage record.
+See [`STATUS.md`](STATUS.md), [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md)
+and [`CHANGELOG.md`](CHANGELOG.md) for the full stage-by-stage record.
 
 ## Quick start
 

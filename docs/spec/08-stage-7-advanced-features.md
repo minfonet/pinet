@@ -355,6 +355,10 @@ winning; `/settings` shows effective values; malformed file warns and falls back
 
 - **Status:** COMPLETE (2026-10-15) — 7a–7g verified; only the deferred items
   listed under 7a.2 and 7e (clipboard images) remain.
+- **Test counts** in the entries below are the suite size *at each verification
+  time* (historically accurate). The final suite after Stage 8 is **371 tests**
+  (Cli 148); see [`STATUS.md`](../../STATUS.md) and
+  [`CHANGELOG.md`](../../CHANGELOG.md).
 
 ### 7a — Steering & follow-up (agent core)
 
