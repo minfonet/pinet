@@ -91,11 +91,5 @@ public static class SessionExport
         _ => string.Empty
     };
 
-    private static string SerializeLine(SessionEntry entry)
-    {
-        using var ms = new MemoryStream();
-        using (var writer = new Utf8JsonWriter(ms, SessionJson.WriterOptions))
-            SessionJson.WriteEntry(writer, entry);
-        return Encoding.UTF8.GetString(ms.ToArray());
-    }
+    private static string SerializeLine(SessionEntry entry) => SessionJson.WriteEntryText(entry);
 }

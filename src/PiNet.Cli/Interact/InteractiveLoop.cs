@@ -1,3 +1,5 @@
+using System.Text;
+using System.Text.RegularExpressions;
 using PiNet.Abstractions.Chat;
 using PiNet.AgentCore;
 using PiNet.AgentCore.Tools;
@@ -30,8 +32,10 @@ public sealed class InteractiveLoop
     private readonly IReadOnlyList<AgentTool> _agentTools;
     private readonly List<string> _extensionWarnings;
     private readonly EffectiveSettings? _settings;
-    private readonly ThinkingLevel? _defaultThinkingLevel;
     private readonly bool _verbose;
+
+    // Mutable so /thinking can change it mid-session; survives model switches.
+    private ThinkingLevel _thinkingLevel;
 
     private readonly LineEditor _editor = new();
     private readonly LineHistory _history = new();
@@ -69,7 +73,8 @@ public sealed class InteractiveLoop
         bool autoCompact = false,
         double compactThreshold = 0.75,
         int compactPreserveRecent = 4,
-        EffectiveSettings? settings = null)
+        EffectiveSettings? settings = null,
+        ThinkingLevel? thinkingLevel = null)
     {
         _chat = chat;
         _manager = manager;
@@ -94,7 +99,7 @@ public sealed class InteractiveLoop
         _compactPreserveRecent = compactPreserveRecent;
         _extensionWarnings = [];
         _settings = settings;
-        _defaultThinkingLevel = settings?.ThinkingLevel;
+        _thinkingLevel = thinkingLevel ?? settings?.ThinkingLevel ?? ThinkingLevel.Off;
         _verbose = settings?.Verbose ?? false;
         _agentTools = AdaptExtensionTools();
     }
@@ -267,6 +272,10 @@ public sealed class InteractiveLoop
         _agent = new Agent(new AgentOptions
         {
             Runner = _chat,
+            // 7d — history blocks the target provider cannot accept (e.g. thinking
+            // blocks handed from Anthropic to OpenAI) are normalized away on the
+            // Llm-bound copy; the persisted session keeps the originals.
+            ConvertToLlm = msgs => MessageNormalizer.ForProvider(msgs, providerId),
             TransformContext = _autoCompact
                 ? (msgs, ct) =>
                 {
@@ -284,8 +293,8 @@ public sealed class InteractiveLoop
                 ModelId = modelId,
                 Tools = tools,
                 Messages = new List<ChatMessage>(messages),
-                // Settings default (spec 7g). 7c /thinking and --thinking override this at runtime.
-                ThinkingLevel = _defaultThinkingLevel ?? ThinkingLevel.Off
+                // Set by --thinking / /thinking (or the settings default, spec 7g).
+                ThinkingLevel = _thinkingLevel
             }
         });
 
@@ -362,6 +371,15 @@ public sealed class InteractiveLoop
                 return true;
             case SlashCommandKind.Settings:
                 await SettingsCommandAsync(command.Arg, hostCt);
+                return true;
+            case SlashCommandKind.Thinking:
+                ThinkingCommand(command.Arg);
+                return true;
+            case SlashCommandKind.Export:
+                await ExportCommandAsync(command.Arg, hostCt);
+                return true;
+            case SlashCommandKind.Import:
+                await ImportCommandAsync(command.Arg, hostCt);
                 return true;
             case SlashCommandKind.Skill:
                 await DispatchSkillAsync(command.Name, command.Arg, hostCt);
@@ -475,6 +493,121 @@ public sealed class InteractiveLoop
 
     private static string SourceOf<T>(T? project, T? global) =>
         project is not null ? "project" : global is not null ? "global" : "default";
+
+    /// <summary>/thinking [level] — view or set the reasoning level for subsequent requests.</summary>
+    private void ThinkingCommand(string? arg)
+    {
+        if (string.IsNullOrWhiteSpace(arg))
+        {
+            _out.WriteLine($"(thinking: {_thinkingLevel})");
+            return;
+        }
+
+        if (!Enum.TryParse<ThinkingLevel>(arg.Trim(), ignoreCase: true, out var level))
+        {
+            _out.WriteLine(
+                $"Unknown thinking level '{arg}' (use Off, Minimal, Low, Medium, High, XHigh, Max).",
+                ConsoleColor.Red);
+            return;
+        }
+
+        _thinkingLevel = level;
+        if (_agent is not null)
+            _agent.State.ThinkingLevel = level;
+        _out.WriteLine($"(thinking: {level})");
+    }
+
+    /// <summary>7f — /export jsonl|html &lt;path&gt;: JSONL = all entries, HTML = active branch.</summary>
+    private async Task ExportCommandAsync(string? arg, CancellationToken ct)
+    {
+        var parts = (arg ?? string.Empty)
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (parts.Length == 0 || parts[0].ToLowerInvariant() is not ("jsonl" or "html"))
+        {
+            _out.WriteLine("Usage: /export jsonl|html <path>", ConsoleColor.Red);
+            return;
+        }
+
+        var format = parts[0].ToLowerInvariant();
+        var session = CurrentSessionSnapshot();
+        if (session is null)
+        {
+            _out.WriteLine("[export] nothing to export yet.", ConsoleColor.DarkGray);
+            return;
+        }
+
+        var path = parts.Length > 1
+            ? string.Join(' ', parts[1..]).Trim('"')
+            : $"pinet-{session.Id}.{format}";
+        if (!Path.IsPathRooted(path))
+            path = Path.Combine(_cwd, path);
+
+        try
+        {
+            if (format == "jsonl")
+                await SessionExport.ExportJsonlAsync(session, path, ct);
+            else
+                await SessionExport.ExportHtmlAsync(session, path, ct);
+            _out.WriteLine($"[export] {session.Entries.Count} entries → {path}");
+        }
+        catch (Exception ex)
+        {
+            _out.WriteLine($"[export] {ex.Message}", ConsoleColor.Red);
+        }
+    }
+
+    /// <summary>7f — /import &lt;path.jsonl&gt;: loads the file into a new session and continues it.</summary>
+    private async Task ImportCommandAsync(string? arg, CancellationToken ct)
+    {
+        var path = (arg ?? string.Empty).Trim().Trim('"');
+        if (path.Length == 0)
+        {
+            _out.WriteLine("Usage: /import <path.jsonl>", ConsoleColor.Red);
+            return;
+        }
+        if (!Path.IsPathRooted(path))
+            path = Path.Combine(_cwd, path);
+        if (!File.Exists(path))
+        {
+            _out.WriteLine($"[import] file not found: {path}", ConsoleColor.Red);
+            return;
+        }
+
+        try
+        {
+            var imported = await SessionExport.ImportJsonlAsync(path, ct);
+            if (imported.Entries.Count == 0)
+            {
+                _out.WriteLine($"[import] no entries found in {path}.", ConsoleColor.Red);
+                return;
+            }
+
+            // Persist under a fresh id so future turns append to the imported session.
+            _session = imported;
+            await _manager.SaveAsync(imported, _cwd, ct);
+            RebuildAgent(_provider, _model, imported.ToMessages());
+            _out.WriteLine($"[import] session {imported.Id} ({imported.Entries.Count} entries) ← {path}");
+        }
+        catch (Exception ex)
+        {
+            // Malformed files fail cleanly: the current session is left untouched.
+            _out.WriteLine($"[import] {ex.Message}", ConsoleColor.Red);
+        }
+    }
+
+    /// <summary>Active session, or a snapshot of the live (ephemeral) context.</summary>
+    private Session? CurrentSessionSnapshot()
+    {
+        if (_session is not null)
+            return _session;
+        var messages = _agent?.State.Messages;
+        if (messages is null || messages.Count == 0)
+            return null;
+        var snapshot = new Session { Id = SessionId.New() };
+        foreach (var message in messages)
+            snapshot.AppendMessage(message);
+        return snapshot;
+    }
 
     private void StartEphemeral()
     {
@@ -664,7 +797,13 @@ public sealed class InteractiveLoop
         _turnCancellation?.Invoke(cts);
         try
         {
-            var result = await _runner!.RunAsync(prompt, cts.Token);
+            // 7e — @path tokens become image attachments; unresolvable tokens stay as text.
+            var (text, images) = await ExpandImagesAsync(prompt);
+            images = VisionFilter(images);
+            var result = images.Count == 0
+                ? await _runner!.RunAsync(text, cts.Token)
+                : await _runner!.RunAsync(ImageMessage(text, images), cts.Token);
+
             if (result.Aborted)
                 _out.WriteLine("(cancelled)", ConsoleColor.DarkGray);
             else if (!result.Ok)
@@ -676,6 +815,27 @@ public sealed class InteractiveLoop
         {
             _activeTurn = null;
         }
+    }
+
+    /// <summary>7e — user message carrying text (when present) plus image attachments.</summary>
+    private static ChatMessage ImageMessage(string text, List<ImageContent> images)
+    {
+        var content = new List<ContentBlock>(images.Count + 1);
+        if (text.Length > 0)
+            content.Add(new TextContent(text));
+        content.AddRange(images);
+        return ChatMessage.User(content);
+    }
+
+    /// <summary>7e — drops attachments when the active model cannot accept images.</summary>
+    private List<ImageContent> VisionFilter(List<ImageContent> images)
+    {
+        if (images.Count == 0 || _chat.GetModel(_provider, _model)?.SupportsVision == true)
+            return images;
+        _out.WriteLine(
+            $"[image] {_provider}/{_model} does not accept image input; {images.Count} attachment(s) skipped.",
+            ConsoleColor.Yellow);
+        return [];
     }
 
     private async Task<string?> ReadLineAsync(string prompt)
@@ -714,6 +874,9 @@ public sealed class InteractiveLoop
                 "model" => "/model <provider>/<id>  — switch models",
                 "trust" => "/trust [off]  — trust this project (bash without prompt) / untrust",
                 "compact" => "/compact [instructions]  — manually compact the session context",
+                "thinking" => "/thinking <level>  — set the reasoning level (Off/Minimal/Low/Medium/High/XHigh/Max)",
+                "export" => "/export jsonl|html <path>  — write the session to a file",
+                "import" => "/import <path.jsonl>  — load a session file and continue it",
                 "unknown" => "unknown command (try /help)",
                 _ => null
             };
@@ -730,6 +893,9 @@ public sealed class InteractiveLoop
         _out.WriteLine("  /model <provider>/<id> switch models");
         _out.WriteLine("  /trust [off]           trust this project (bash without prompt) / untrust");
         _out.WriteLine("  /compact [instructions] manually compact the session context");
+        _out.WriteLine("  /thinking <level>      set the reasoning level (Off/Minimal/Low/Medium/High/XHigh/Max)");
+        _out.WriteLine("  /export jsonl|html <path> export the session (all entries / active branch)");
+        _out.WriteLine("  /import <path.jsonl>   import a session file and continue it");
 
         if (_extensions is not null && _extensions.Commands.Count > 0)
         {
@@ -784,34 +950,63 @@ public sealed class InteractiveLoop
         };
     }
 
-    private async Task<(string Text, System.Collections.Generic.List<Abstractions.Chat.ImageContent> Images)?> ExpandImagesAsync(string text)
+    /// <summary>
+    /// 7e — expands <c>@path.png</c> tokens into base64 <see cref="ImageContent"/>
+    /// attachments (paths resolved against the session cwd). The prompt text is
+    /// preserved verbatim except for the extracted tokens; unresolvable tokens
+    /// stay in the text unchanged.
+    /// </summary>
+    private async Task<(string Text, List<ImageContent> Images)> ExpandImagesAsync(string text)
     {
+        var images = new List<ImageContent>();
         if (string.IsNullOrEmpty(text))
-            return (text, new System.Collections.Generic.List<Abstractions.Chat.ImageContent>());
-        var images = new System.Collections.Generic.List<Abstractions.Chat.ImageContent>();
-        // Simple tokenization: find @path tokens
-        var parts = text.Split(new[] { ' ', '\t', '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries);
-        var kept = new System.Collections.Generic.List<string>();
-        foreach (var p in parts)
+            return (text ?? string.Empty, images);
+
+        var result = new StringBuilder();
+        var last = 0;
+        foreach (Match match in ImageTokenRegex.Matches(text))
         {
-            if (p.StartsWith("@") && (p.EndsWith(".png") || p.EndsWith(".jpg") || p.EndsWith(".jpeg") || p.EndsWith(".gif") || p.EndsWith(".webp") || p.EndsWith(".bmp") || p.EndsWith(".svg")))
+            var path = match.Groups[1].Value;
+            var full = Path.IsPathRooted(path) ? path : Path.Combine(_cwd, path);
+            ImageContent? image = null;
+            try
             {
-                var path = p.Substring(1);
-                try
+                if (File.Exists(full))
                 {
-                    var full = Path.IsPathRooted(path) ? path : Path.Combine(Environment.CurrentDirectory, path);
-                    if (File.Exists(full))
-                    {
-                        var bytes = await File.ReadAllBytesAsync(full);
-                        var b64 = Convert.ToBase64String(bytes);
-                        images.Add(new Abstractions.Chat.ImageContent(b64, InferMime(full)));
-                        continue;
-                    }
+                    var bytes = await File.ReadAllBytesAsync(full);
+                    image = new ImageContent(Convert.ToBase64String(bytes), InferMime(full));
                 }
-                catch { }
             }
-            kept.Add(p);
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                _out.WriteLine($"[image] {path}: {ex.Message} — sending as text.", ConsoleColor.Yellow);
+            }
+
+            if (image is null)
+                continue; // unresolvable: the token stays in the text untouched
+
+            AppendSegment(result, text, last, match.Index);
+            last = match.Index + match.Length;
+            images.Add(image);
         }
-        return (string.Join(" ", kept), images);
+
+        if (images.Count == 0)
+            return (text, images);
+
+        AppendSegment(result, text, last, text.Length);
+        return (result.ToString().Trim(), images);
+    }
+
+    private static readonly Regex ImageTokenRegex = new(
+        @"@(\S+?\.(?:png|jpg|jpeg|gif|webp|bmp|svg))(?=\s|$)",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    /// <summary>Appends <c>text[start..end]</c>, avoiding doubled whitespace at extraction seams.</summary>
+    private static void AppendSegment(StringBuilder sb, string text, int start, int end)
+    {
+        if (sb.Length > 0 && char.IsWhiteSpace(sb[^1]))
+            while (start < end && char.IsWhiteSpace(text[start]))
+                start++;
+        sb.Append(text, start, end - start);
     }
 }

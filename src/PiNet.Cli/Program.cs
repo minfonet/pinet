@@ -44,6 +44,7 @@ internal static class Program
         double? cliThreshold = null;
         int? cliPreserve = null;
         bool? cliAutoCompact = null;
+        Abstractions.Chat.ThinkingLevel? cliThinking = null;
         var printMode = false;
         var agentMode = false;
         var interactive = false;
@@ -108,6 +109,13 @@ internal static class Program
                 case "--no-prompt-templates":
                     noTemplates = true;
                     break;
+                case "--thinking" when i + 1 < args.Length:
+                    if (Enum.TryParse<Abstractions.Chat.ThinkingLevel>(args[++i], ignoreCase: true, out var tl))
+                        cliThinking = tl;
+                    else
+                        Console.Error.WriteLine(
+                            "[thinking] Unknown level (use Off/Minimal/Low/Medium/High/XHigh/Max); ignored.");
+                    break;
                 case "--compact":
                     cliAutoCompact = true;
                     break;
@@ -137,6 +145,7 @@ internal static class Program
         var autoCompact = cliAutoCompact ?? settings.AutoCompact;
         var compactThreshold = cliThreshold ?? settings.CompactThreshold;
         var compactPreserve = cliPreserve ?? settings.CompactPreserveRecent;
+        var thinkingLevel = cliThinking ?? settings.ThinkingLevel;
 
         var prompt = string.Join(' ', prompts);
 
@@ -147,7 +156,7 @@ internal static class Program
                 Console.Error.WriteLine("Interactive mode requires an interactive terminal.");
                 return 1;
             }
-            return await InteractiveModeAsync(providerId, modelId, sessionRef, forkRef, continueLatest, noSession, approve, noApprove, noExtensions, noSkills, noTemplates, autoCompact, compactThreshold, compactPreserve, settings);
+            return await InteractiveModeAsync(providerId, modelId, sessionRef, forkRef, continueLatest, noSession, approve, noApprove, noExtensions, noSkills, noTemplates, autoCompact, compactThreshold, compactPreserve, settings, thinkingLevel);
         }
 
         if (!Console.IsInputRedirected && string.IsNullOrWhiteSpace(prompt))
@@ -170,13 +179,13 @@ internal static class Program
         }
 
         if (printMode)
-            return await PrintModeAsync(providerId, modelId, prompt, apiKeyOverride, noExtensions, noSkills, noTemplates);
+            return await PrintModeAsync(providerId, modelId, prompt, apiKeyOverride, noExtensions, noSkills, noTemplates, thinkingLevel);
 
         if (agentMode)
-            return await AgentModeAsync(providerId, modelId, prompt, apiKeyOverride, sessionRef, forkRef, continueLatest, noSession, approve, noApprove, noExtensions, noSkills, noTemplates, settings.ThinkingLevel);
+            return await AgentModeAsync(providerId, modelId, prompt, apiKeyOverride, sessionRef, forkRef, continueLatest, noSession, approve, noApprove, noExtensions, noSkills, noTemplates, thinkingLevel);
 
         // No mode flag: default to one-shot print mode.
-        return await PrintModeAsync(providerId, modelId, prompt, apiKeyOverride, noExtensions, noSkills, noTemplates);
+        return await PrintModeAsync(providerId, modelId, prompt, apiKeyOverride, noExtensions, noSkills, noTemplates, thinkingLevel);
     }
 
     private static bool IsPackageSubcommand(string arg) =>
@@ -189,7 +198,8 @@ internal static class Program
         string? apiKeyOverride,
         bool noExtensions = false,
         bool noSkills = false,
-        bool noTemplates = false)
+        bool noTemplates = false,
+        Abstractions.Chat.ThinkingLevel? thinkingLevel = null)
     {
         var registry = DefaultModelRegistry.Create();
         var chat = new ChatService(registry);
@@ -216,7 +226,7 @@ internal static class Program
             PiNet.Abstractions.Chat.ChatMessage.User(prompt)
         };
 
-        await foreach (var evt in chat.GenerateAsync(providerId, modelId, setup.SystemPrompt, messages, ct: cts.Token))
+        await foreach (var evt in chat.GenerateAsync(providerId, modelId, setup.SystemPrompt, messages, thinkingLevel: thinkingLevel, ct: cts.Token))
         {
             switch (evt)
             {
@@ -270,7 +280,8 @@ internal static class Program
         bool autoCompact = false,
         double compactThreshold = 0.75,
         int compactPreserve = 4,
-        EffectiveSettings? settings = null)
+        EffectiveSettings? settings = null,
+        Abstractions.Chat.ThinkingLevel? thinkingLevel = null)
     {
         var registry = DefaultModelRegistry.Create();
         var chat = new ChatService(registry);
@@ -315,7 +326,8 @@ internal static class Program
             autoCompact: autoCompact,
             compactThreshold: compactThreshold,
             compactPreserveRecent: compactPreserve,
-            settings: settings);
+            settings: settings,
+            thinkingLevel: thinkingLevel);
 
         return await loop.RunAsync(cts.Token);
     }
@@ -425,6 +437,8 @@ internal static class Program
         var agent = new Agent(new AgentOptions
         {
             Runner = chat,
+            // 7d — strip blocks the target provider cannot accept from the request.
+            ConvertToLlm = msgs => MessageNormalizer.ForProvider(msgs, providerId),
             BeforeToolCall = PermissionGate.Create(resolver, permissionPrompt, cwd),
             InitialState = new AgentState
             {
@@ -538,6 +552,7 @@ internal static class Program
           --compact            Enable automatic context compaction in interactive mode
           --compact-threshold <0..1>  Compaction threshold fraction (default 0.75)
           --compact-preserve <n>      Number of recent messages to keep verbatim (default 4)
+          --thinking <level>   Reasoning level: Off/Minimal/Low/Medium/High/XHigh/Max
           --list-models        List available models
           -h, --help           Show this help
         """);

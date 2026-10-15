@@ -12,6 +12,9 @@ public enum SlashCommandKind
     Trust,
     Compact,
     Settings,
+    Thinking,
+    Export,
+    Import,
     Skill
 }
 
@@ -47,6 +50,9 @@ public static class SlashCommandParser
             "trust" => SlashCommandKind.Trust,
             "compact" => SlashCommandKind.Compact,
             "settings" => SlashCommandKind.Settings,
+            "thinking" => SlashCommandKind.Thinking,
+            "export" => SlashCommandKind.Export,
+            "import" => SlashCommandKind.Import,
             _ => SlashCommandKind.Unknown
         };
 

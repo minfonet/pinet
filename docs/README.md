@@ -33,6 +33,7 @@ This folder contains all project documentation, written using the **Spec-Driven 
 | [05-stage-5-permissions.md](spec/05-stage-5-permissions.md) | 5 — Permissions & Tool Security | Verified |
 | [06-stage-6-extensions-skills.md](spec/06-stage-6-extensions-skills.md) | 6 — Extensions & Skills | Verified |
 | [07-local-llm-providers.md](spec/07-local-llm-providers.md) | 6 — Local & Custom LLM Providers | Verified |
+| [08-stage-7-advanced-features.md](spec/08-stage-7-advanced-features.md) | 7 — Advanced Features | Verified (7a.2 deferred) |
 
 ### Architecture Decision Records (adr/)
 
@@ -49,6 +50,7 @@ This folder contains all project documentation, written using the **Spec-Driven 
 | [permissions.md](permissions.md) | Permission rules, config files, `/trust`, `--approve`, container template |
 | [extensions.md](extensions.md) | Extensions, skills, prompt templates, context files, packages (`pinet install`) |
 | [local-llms.md](local-llms.md) | Local & custom LLM providers via `~/.pinet/models.json` (Ollama, LM Studio, vLLM, …) |
+| [packaging.md](packaging.md) | Packaging & distribution (tool install, install scripts, CI) |
 
 ### Scripts
 

@@ -1,6 +1,6 @@
 # Specification 08 — Stage 7: Advanced Features
 
-- **Spec status:** In Progress
+- **Spec status:** Verified (2026-10-15); 7a.2 (CLI capture during a turn) deferred
 - **Author:** Pi.NET
 - **Written before implementation:** yes (SDD)
 - **Consumes:** `Agent` / `AgentState` / `AgentEvent` (SR-02), `SessionManager` / `SessionCompactor` / `SessionJson` (SR-03), `IModelRunner` / `ChatRequest` / `StreamEvent` / `ModelDefinition` (SR-01), interactive loop + slash commands (SR-04), `~/.pinet` config resolution (SR-05/06/07)
@@ -17,11 +17,11 @@ independently:
 |-----------|---------|--------|
 | 7a | Steering & follow-up | Verified (agent core); CLI capture 7a.2 deferred |
 | 7b | Context compaction (auto + `/compact`) | Verified |
-| 7c | Reasoning / thinking levels | Skeleton implemented |
-| 7d | Cross-provider handoff | Skeleton implemented |
-| 7e | Image input | Skeleton implemented |
-| 7f | Export / import | Skeleton implemented |
-| 7g | Settings | Skeleton implemented |
+| 7c | Reasoning / thinking levels | Verified (2026-10-15) |
+| 7d | Cross-provider handoff | Verified (2026-10-15) |
+| 7e | Image input | Verified (2026-10-15) |
+| 7f | Export / import | Verified (2026-10-15) |
+| 7g | Settings | Verified (2026-10-15) |
 
 ## 2. Scope
 
@@ -234,6 +234,8 @@ public sealed class ContextCompactor
 
 ## 5. Sub-stage 7c — Reasoning / thinking levels
 
+- **Status:** Verified (2026-10-15); see §11.
+
 **Goal.** Expose the (already scaffolded) `ThinkingLevel` end-to-end.
 
 Scope:
@@ -256,6 +258,8 @@ session; `Off` sends no thinking fields.
 
 ## 6. Sub-stage 7d — Cross-provider handoff
 
+- **Status:** Verified (2026-10-15); see §11.
+
 **Goal.** Switch provider/model mid-session without losing context.
 
 Scope:
@@ -273,6 +277,9 @@ normalized without data loss in the persisted session; the picker selects a
 valid model.
 
 ## 7. Sub-stage 7e — Image input
+
+- **Status:** Verified (2026-10-15); see §11. Clipboard/paste images remain
+  deferred (optional per scope).
 
 **Goal.** Let the user attach images to a prompt as vision content.
 
@@ -292,6 +299,8 @@ request; a non-vision model refuses with a message; text-only prompts unchanged.
 
 ## 8. Sub-stage 7f — Export / import
 
+- **Status:** Verified (2026-10-15); see §11.
+
 **Goal.** Portable sessions.
 
 Scope:
@@ -307,6 +316,9 @@ exported JSONL re-imports to an equivalent session; import of a malformed file
 fails cleanly without corrupting existing sessions.
 
 ## 9. Sub-stage 7g — Settings
+
+- **Status:** Verified (2026-10-15); see §11. Hot-reload of settings files during
+  a session remains out of scope (restart picks changes up).
 
 **Goal.** User/project configuration.
 
@@ -341,7 +353,8 @@ winning; `/settings` shows effective values; malformed file warns and falls back
 
 ## 11. Verification log
 
-- **Status:** IN PROGRESS
+- **Status:** COMPLETE (2026-10-15) — 7a–7g verified; only the deferred items
+  listed under 7a.2 and 7e (clipboard images) remain.
 
 ### 7a — Steering & follow-up (agent core)
 
@@ -427,29 +440,171 @@ Implemented and verified per §4. Verification summary:
 - **Divergences from spec (intentional):** none. Character-based estimator
   (~4 chars/token); threshold uses `max(estimate, LastPromptTokens)` when real
   prompt-token counts are available.
-- **Open items:** none for 7b; 7c–7g remain skeleton (per §11).
+- **Open items:** none for 7b; 7c–7g verified (per §11).
 
 ### 7c — Reasoning / thinking levels
 
-- **Status:** SKELETON (2026-09-21)
-Implemented `ThinkingMapper` stub and `AgentState.ThinkingLevel`. Provider mapping is a placeholder.
+- **Status:** DONE (2026-10-15)
+
+Implemented per §5. Verification summary:
+
+- **Build:** `dotnet build PiNet.slnx` → 0 warnings, 0 errors.
+- **Tests:** `dotnet test PiNet.slnx` → 370 passed, 0 failed (Providers 34,
+  up from 18; AgentCore 52, up from 44; Cli 147, up from 133; Sessions 26;
+  Permissions 47; Extensions 64).
+- **AC coverage:**
+  - AC7c.1 (payload per level) — `PiNet.Providers.Tests/ThinkingPayloadTests`:
+    `OpenAi_ThinkingOff_SendsNoReasoningEffort` (null + `Off`),
+    `OpenAi_ThinkingLevel_MapsToReasoningEffort` (minimal/low/medium/high ×3),
+    `Anthropic_ThinkingOff_SendsNoThinking`,
+    `Anthropic_ThinkingOn_SendsEnabledWithBudgetBelowMaxTokens`,
+    `Anthropic_MediumWithLargeMaxTokens_UsesLevelBudget`,
+    `Anthropic_HighLevel_ClampsBudgetBelowMaxTokens`,
+    `Anthropic_TinyMaxTokens_DisablesThinking`,
+    `Mapper_ClampsBudgetsToTheAllowedRange`, `Mapper_OpenAiEffort_IsNullOnlyWhenOff`.
+  - AC7c.2 (`/thinking high` changes the next request) —
+    `InteractiveLoopTests.Thinking_Command_SetsLevel_ForNextRequest` (asserts
+    `ChatRequest.ThinkingLevel == High`); no-arg shows the current level;
+    invalid level is rejected and keeps the previous one; the level survives a
+    `/model` switch.
+  - AC7c.3 (thinking round-trips in a session) —
+    `AgentCore.Tests/ThinkingTests.ThinkingDeltas_AreCapturedAsThinkingContent`
+    (assistant message carries `ThinkingContent`);
+    `Sessions.Tests/SessionExportTests.Jsonl_RoundTrips_AllEntries_AndBlockKinds`
+    (thinking/image/tool blocks survive the JSONL round-trip).
+  - AC7c.4 (`Off` sends no thinking fields) — covered by the Off/unset payload
+    tests above; `State_ThinkingLevel_IsPassedToTheRunner` pins the plumbing.
+- **Code added:** `src/PiNet.Abstractions/Providers/ThinkingMapper.cs`
+  (moved from AgentCore and rewritten with typed helpers:
+  `ToOpenAiReasoningEffort`, `ToAnthropicBudgetTokens`).
+- **Code modified:** `OpenAIChatProvider` (`reasoning_effort` in the payload,
+  null-ignoring serializer options, `BuildPayloadJson` internal for wire tests),
+  `AnthropicChatProvider` (`thinking: {type: enabled, budget_tokens}` +
+  null-ignoring options), `PiNet.Providers.csproj` (`InternalsVisibleTo`),
+  `SlashCommand`/`InteractiveLoop` (`/thinking [level]`), `Program.cs`
+  (`--thinking <level>` for print/agent/interactive modes).
+- **Divergences from spec (intentional):** OpenAI effort for reasoning models
+  is sent whenever a level is set (the spec gates UI, not the wire); `XHigh`
+  and `Max` clamp to `high` (no higher OpenAI value); Anthropic budgets are the
+  documented minimum `1024`, doubling per level, clamped below `max_tokens`
+  (thinking is silently unavailable when `max_tokens <= 1024`).
 
 ### 7d — Cross-provider handoff
 
-- **Status:** SKELETON (2026-09-21)
-`/model` switch rebuilds agent with existing messages. `ConvertToLlm` present but normalization is identity.
+- **Status:** DONE (2026-10-15)
+
+Implemented per §6. Verification summary:
+
+- **Build/tests:** same run as 7c (370 passed, 0 failed).
+- **AC coverage:**
+  - AC7d.1 (switch keeps the conversation coherent) —
+    `InteractiveLoopTests.HandoffToAnthropicStyleProvider_KeepsThinking` and
+    `HandoffToOpenAi_DropsThinking_FromRequest_ButKeepsSession` (text, tool
+    calls and results always survive; the last turn's messages reach the new
+    provider).
+  - AC7d.2 (normalize without data loss in the persisted session) —
+    the OpenAi handoff test re-reads the session entries and asserts the
+    original `ThinkingContent` entry is still persisted.
+  - AC7d.3 (picker selects a valid model) —
+    `InteractiveLoopTests` `/model` listing + switch tests
+    (`CompactThenModelSwitch_SummaryFoldsAcrossSwitch`,
+    `Thinking_Level_Survives_ModelSwitch`).
+  - Unit coverage — `AgentCore.Tests/MessageNormalizerTests` (same-instance
+    pass-through for Anthropic and for histories without thinking; thinking
+    stripping keeps text/tool blocks; thinking-only messages become an empty
+    text block; original list untouched).
+- **Code added:** `src/PiNet.AgentCore/MessageNormalizer.cs`
+  (`ForProvider(messages, providerId)`).
+- **Code modified:** `InteractiveLoop.RebuildAgent` and
+  `Program.AgentModeAsync` wire `ConvertToLlm = msgs =>
+  MessageNormalizer.ForProvider(msgs, providerId)`.
+- **Divergences from spec (intentional):** the target "accepts thinking
+  history" test is the provider id containing `anthropic` (built-ins and
+  anthropic-compatible custom providers); Anthropic requests currently do not
+  re-send thinking blocks on the wire (no signature support), so keeping them
+  in the message list is lossless but inert until that lands.
 
 ### 7e — Image input
 
-- **Status:** SKELETON (2026-09-21)
-`ChatMessage` supports `ImageContent`. CLI stub for `@image` paths not fully wired.
+- **Status:** DONE (2026-10-15)
+
+Implemented per §7. Verification summary:
+
+- **Build/tests:** same run as 7c (370 passed, 0 failed).
+- **AC coverage:**
+  - AC7e.1 (`@image.png` visible in the request) —
+    `InteractiveLoopTests.ImageToken_BecomesImageBlock_WhenModelSupportsVision`
+    (base64 bytes + inferred `image/png` in the user message; text keeps the
+    rest of the prompt); `ImageToken_MissingFile_StaysAsText` (unresolvable
+    tokens are left in the text verbatim).
+  - AC7e.2 (non-vision model refuses with a message) —
+    `ImageToken_NonVisionModel_SkipsAttachment_WithMessage` (attachment
+    dropped, yellow `[image] … does not accept image input` notice, text-only
+    request).
+  - AC7e.3 (text-only prompts unchanged) — the whole suite (prompt text is
+    preserved byte-for-byte when no image token is extracted; regression
+    caught and fixed for trailing whitespace during implementation).
+- **Code modified:** `InteractiveLoop.RunTurnAsync` (expansion + vision guard +
+  `ChatMessage` with image blocks), `ExpandImagesAsync` (regex-based token
+  extraction, relative to session cwd, warns on unreadable files),
+  `TurnRunner.RunAsync(ChatMessage, …)` overload.
+- **Divergences from spec (intentional):** a non-vision model skips the
+  attachments and still sends the prompt text (clear notice instead of failing
+  the turn); clipboard/paste images remain deferred as documented in §7.
 
 ### 7f — Export / import
 
-- **Status:** SKELETON (2026-09-21)
-`SessionExport.ExportJsonlAsync` / `ExportHtmlAsync` implemented as stubs.
+- **Status:** DONE (2026-10-15)
+
+Implemented per §8. Verification summary:
+
+- **Build/tests:** same run as 7c (370 passed, 0 failed).
+- **AC coverage:**
+  - AC7f.1 (HTML opens standalone and contains every message) —
+    `SessionExportTests.Html_Export_WritesStandaloneFile_WithActiveBranch`
+    (doctype → `</html>`, thinking/tool/image blocks rendered) and
+    `Html_EscapesMarkup`; CLI: `Export_Html_WritesStandaloneFile`.
+  - AC7f.2 (JSONL re-imports to an equivalent session) —
+    `SessionExportTests.Jsonl_RoundTrips_AllEntries_AndBlockKinds` (entry-by-
+    entry equality via `SessionJson.WriteEntryText`), `Jsonl_String_RoundTrips`,
+    `Import_ImportedSession_IsIndependent_WithFreshId`; CLI:
+    `Export_Jsonl_ThenImport_RoundTrips_AndContinuesSession` (export → import
+    in a second loop → next turn sees the imported messages).
+  - AC7f.3 (malformed file fails cleanly) —
+    `SessionExportTests.Import_MalformedLine_Throws`; CLI:
+    `Import_MalformedFile_FailsCleanly_WithoutCorruptingCurrentSession`
+    (red `[import]` message, session keeps working) and
+    `Import_MissingFile_ReportsNotFound`; `Export_MissingFormat_PrintsUsage`.
+- **Code added:** `SessionJson.WriteEntryText` (shared entry serialization).
+- **Code modified:** `SlashCommand`/`InteractiveLoop` (`/export jsonl|html
+  <path>`, `/import <path.jsonl>`; CLI import persists a fresh session id and
+  rebuilds the agent), `SessionStore`/`SessionExport` use the shared serializer.
+- **Divergences from spec (intentional):** JSONL exports *all* entries
+  (history + branches) while HTML renders the active branch — matches the
+  "portable/round-trip" intent; `/export` without a path writes
+  `pinet-<session-id>.<format>` in the session cwd.
 
 ### 7g — Settings
 
-- **Status:** SKELETON (2026-09-21)
-`SettingsManager` loads `~/.pinet/settings.json` and `.pi/settings.json`. Hot-reload not implemented.
+- **Status:** DONE (2026-10-15)
+
+Implemented per §9. Verification summary:
+
+- **Build/tests:** same run as 7c (370 passed, 0 failed; 19 of the Cli tests
+  are `SettingsTests`).
+- **AC coverage:**
+  - Global + project merge with project winning —
+    `SettingsTests` load/merge cases; malformed file warns and falls back
+    (`Load_InvalidThinking_Ignored_WithWarning`).
+  - `/settings` shows/sets effective values (`(global thinkingLevel = High …)`
+    output assertions).
+  - `PI_NET_HOME` relocates sessions (end-to-end `SessionManager` test).
+  - Settings defaults surface in the loop (provider/model/thinking/verbose).
+- **Code added:** `src/PiNet.Cli/Settings/SettingsManager.cs`,
+  `src/PiNet.Cli.Tests/SettingsTests.cs`.
+- **Code modified:** `SessionManager` (root under `PI_NET_HOME`),
+  `Program.cs` (settings defaults + flag precedence), `InteractiveLoop`
+  (settings banner, defaults), obsolete `IgnoreNullValues` replaced with
+  `DefaultIgnoreCondition`.
+- **Open items:** hot-reload during a running session is out of scope
+  (restart picks changes up).

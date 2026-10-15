@@ -9,10 +9,10 @@ with **Spec-Driven Development** (spec first, then verify against the running CL
 
 | Item | State |
 |------|-------|
-| Stages | **1–6 + spec 07 verified**; **Stage 7 in progress** (7a verified, 7b skeleton) |
+| Stages | **1–7 + spec 07 verified**; **Stage 8 in progress** (CI/packaging scaffolding committed) |
 | Build | `dotnet build PiNet.slnx` — clean (0 warnings, 0 errors) |
-| Tests | **287 passing** (see verification commands below) |
-| Next | Stage 7b — Context compaction verification + tests |
+| Tests | **370 passing** (see verification commands below) |
+| Next | Stage 8 — release automation (`pinet update --self`, per-RID publishes) |
 
 See [`STATUS.md`](STATUS.md) and [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md)
 for the full stage-by-stage record.
@@ -56,8 +56,8 @@ dotnet run --project src/PiNet.Cli -- --provider openai --model gpt-4o -p "hello
 | 4 | Interactive loop | Zero-dependency TUI, line editor + history, slash commands, Ctrl+C semantics |
 | 5 | Permissions & tool security | Rule resolver (safety floor, deny-sticky), `/trust`, `--approve`, path globs |
 | 6 | **Extensions & Skills** | Extension host, skills, prompt templates, context files, package manager |
-| 7 | Advanced Features | not started |
-| 8 | Packaging & Release | not started |
+| 7 | **Advanced Features** | Steering/follow-up, context compaction (`/compact`), thinking levels (`/thinking`), cross-provider handoff, `@image` input, `/export`+`/import`, settings |
+| 8 | Packaging & Release | CI workflow + `dotnet tool` metadata committed; release automation pending |
 
 Beyond the staged work, [spec 07](docs/spec/07-local-llm-providers.md) adds
 Pi-compatible local/custom LLM providers (`~/.pinet/models.json`).
@@ -222,6 +222,29 @@ kept, and a configured `openai`/`anthropic` key merges by model `id`. A missing
 or malformed file falls back to the built-ins with a warning. Full reference:
 [`docs/local-llms.md`](docs/local-llms.md).
 
+## Advanced features (Stage 7)
+
+- **Thinking levels** — `/thinking Off|Minimal|Low|Medium|High|XHigh|Max` in the
+  loop or `--thinking <level>` per run. Mapped to OpenAI `reasoning_effort` and
+  Anthropic `thinking.budget_tokens`; thinking deltas render dimmed and are
+  persisted with the session.
+- **Cross-provider handoff** — `/model <provider>/<id>` (or `/model` to list)
+  switches mid-session; history is normalized per target provider (thinking
+  blocks are dropped for providers that cannot accept them, the session keeps
+  them).
+- **Image input** — attach files with `@photo.png` (png/jpg/jpeg/gif/webp/bmp/svg,
+  relative to the working directory); non-vision models skip the attachment with
+  a notice.
+- **Context compaction** — `/compact [instructions]` or `--compact`
+  (`--compact-threshold`, `--compact-preserve`); the summary is persisted and the
+  JSONL history remains lossless.
+- **Export / import** — `/export jsonl <path>` (all entries), `/export html <path>`
+  (standalone styled active branch), `/import <path.jsonl>` (continues the
+  imported conversation).
+- **Settings** — `~/.pinet/settings.json` (or `$PI_NET_HOME`) merged with
+  `<cwd>/.pi/settings.json` (project wins): provider/model, thinking level,
+  auto-compaction, verbose; `/settings` views/edits.
+
 ## Manual smoke tests
 
 [`scripts/smoke-stage6.ps1`](scripts/smoke-stage6.ps1) runs the Stage 6 wiring
@@ -246,7 +269,7 @@ $env:OPENAI_API_KEY = "sk-..."; .\scripts\smoke-stage6.ps1 -OpenAiModel gpt-4o
 
 ```bash
 dotnet build PiNet.slnx        # 0 warnings, 0 errors
-dotnet test PiNet.slnx         # 287/287 passing
+dotnet test PiNet.slnx         # 370/370 passing
 dotnet run --project src/PiNet.Cli -- --list-models
 dotnet run --project src/PiNet.Cli -- --provider faux --model faux-model -p "hi"
 ```

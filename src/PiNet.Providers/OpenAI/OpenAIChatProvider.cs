@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using PiNet.Abstractions.Auth;
 using PiNet.Abstractions.Chat;
 using PiNet.Abstractions.Models;
@@ -11,7 +12,11 @@ namespace PiNet.Providers.OpenAI;
 
 public sealed class OpenAIChatProvider : IChatProvider
 {
-    private static readonly JsonSerializerOptions JsonOpts = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
+    private static readonly JsonSerializerOptions JsonOpts = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+    };
 
     private readonly HttpClient _http;
     private readonly string _baseUrl;
@@ -57,7 +62,7 @@ public sealed class OpenAIChatProvider : IChatProvider
 
         yield return new StreamStart(Id, request.ModelId, null);
 
-        var json = JsonSerializer.Serialize(BuildPayload(request), JsonOpts);
+        var json = BuildPayloadJson(request);
         using var payload = new StringContent(json, Encoding.UTF8, "application/json");
         using var httpRequest = new HttpRequestMessage(HttpMethod.Post, $"{_baseUrl}/chat/completions")
         {
@@ -218,6 +223,10 @@ public sealed class OpenAIChatProvider : IChatProvider
         return new Usage(input, output, cacheRead, 0, new Cost(0, 0, 0, 0));
     }
 
+    /// <summary>Builds the <c>/chat/completions</c> payload (internal for wire-level tests).</summary>
+    internal static string BuildPayloadJson(ChatRequest request) =>
+        JsonSerializer.Serialize(BuildPayload(request), JsonOpts);
+
     private static object BuildPayload(ChatRequest request) => new
     {
         model = request.ModelId,
@@ -225,7 +234,8 @@ public sealed class OpenAIChatProvider : IChatProvider
         messages = BuildMessages(request),
         tools = BuildTools(request.Tools),
         temperature = request.Temperature ?? 1,
-        max_tokens = request.MaxTokens ?? 4096
+        max_tokens = request.MaxTokens ?? 4096,
+        reasoning_effort = ThinkingMapper.ToOpenAiReasoningEffort(request.ThinkingLevel)
     };
 
     private static List<object> BuildMessages(ChatRequest request)

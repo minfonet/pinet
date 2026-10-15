@@ -643,4 +643,374 @@ public class InteractiveLoopTests
         var entries = await ReadEntriesAsync(fx.Manager, fx.Cwd, session.Id);
         Assert.Single(entries); // nothing added
     }
+
+    // --- 7c: /thinking (reasoning level) ---------------------------------------
+
+    [Fact]
+    public async Task Thinking_Command_SetsLevel_ForNextRequest()
+    {
+        using var fx = new Fixture();
+        var provider = new ScriptedProvider("faux", "ok");
+        fx.Registry.RegisterProvider(provider);
+
+        var input = new ScriptedInput(
+        [
+            ..Keys.Type("/thinking high"), Keys.Enter,
+            ..Keys.Type("hello"), Keys.Enter,
+            ..Keys.Type("/quit"), Keys.Enter
+        ]);
+        var output = new CapturingOutput();
+        var loop = NewLoop(fx, input, output);
+
+        var code = await loop.RunAsync();
+
+        Assert.Equal(0, code);
+        Assert.Contains("(thinking: High)", output.All);
+        Assert.Single(provider.Requests);
+        Assert.Equal(ThinkingLevel.High, provider.Requests[0].ThinkingLevel);
+    }
+
+    [Fact]
+    public async Task Thinking_Command_NoArg_ShowsCurrentLevel()
+    {
+        using var fx = new Fixture();
+        fx.Registry.RegisterProvider(new ScriptedProvider("faux"));
+
+        var input = new ScriptedInput(
+        [
+            ..Keys.Type("/thinking"), Keys.Enter,
+            ..Keys.Type("/quit"), Keys.Enter
+        ]);
+        var output = new CapturingOutput();
+        var loop = NewLoop(fx, input, output);
+
+        await loop.RunAsync();
+
+        Assert.Contains("(thinking: Off)", output.All);
+    }
+
+    [Fact]
+    public async Task Thinking_Command_InvalidLevel_IsRejected_AndLevelUnchanged()
+    {
+        using var fx = new Fixture();
+        var provider = new ScriptedProvider("faux", "ok");
+        fx.Registry.RegisterProvider(provider);
+
+        var input = new ScriptedInput(
+        [
+            ..Keys.Type("/thinking banana"), Keys.Enter,
+            ..Keys.Type("hello"), Keys.Enter,
+            ..Keys.Type("/quit"), Keys.Enter
+        ]);
+        var output = new CapturingOutput();
+        var loop = NewLoop(fx, input, output);
+
+        await loop.RunAsync();
+
+        Assert.Contains(output.RedLines, l => l.Contains("Unknown thinking level"));
+        Assert.Equal(ThinkingLevel.Off, provider.Requests[0].ThinkingLevel);
+    }
+
+    [Fact]
+    public async Task Thinking_Level_Survives_ModelSwitch()
+    {
+        using var fx = new Fixture();
+        var p1 = new ScriptedProvider("p1", "one");
+        var p2 = new ScriptedProvider("p2", "two");
+        fx.Registry.RegisterProvider(p1);
+        fx.Registry.RegisterProvider(p2);
+
+        var input = new ScriptedInput(
+        [
+            ..Keys.Type("/thinking medium"), Keys.Enter,
+            ..Keys.Type("first"), Keys.Enter,
+            ..Keys.Type("/model p2/p2-model"), Keys.Enter,
+            ..Keys.Type("second"), Keys.Enter,
+            ..Keys.Type("/quit"), Keys.Enter
+        ]);
+        var output = new CapturingOutput();
+        var loop = NewLoop(fx, input, output, providerId: "p1", modelId: "p1-model");
+
+        await loop.RunAsync();
+
+        Assert.Equal(ThinkingLevel.Medium, p1.Requests[0].ThinkingLevel);
+        Assert.Equal(ThinkingLevel.Medium, p2.Requests[0].ThinkingLevel);
+    }
+
+    // --- 7d: cross-provider handoff --------------------------------------------
+
+    private static IReadOnlyList<ChatMessage> ThinkingSeed() =>
+    [
+        ChatMessage.User("earlier question"),
+        new ChatMessage(ChatRole.Assistant,
+            [new ThinkingContent("private reasoning"), new TextContent("earlier answer")], Timestamp: 1000)
+    ];
+
+    [Fact]
+    public async Task HandoffToOpenAi_DropsThinking_FromRequest_ButKeepsSession()
+    {
+        using var fx = new Fixture();
+        var provider = new ScriptedProvider("faux", "ok");
+        fx.Registry.RegisterProvider(provider);
+        var session = fx.Manager.CreateSession(fx.Cwd, ThinkingSeed());
+
+        var input = new ScriptedInput(
+        [
+            ..Keys.Type("continue"), Keys.Enter,
+            ..Keys.Type("/quit"), Keys.Enter
+        ]);
+        var output = new CapturingOutput();
+        var loop = NewLoop(fx, input, output, sessionRef: session.Id);
+
+        await loop.RunAsync();
+
+        var sent = provider.Requests[0].Messages;
+        Assert.DoesNotContain(sent, m => m.Content.Any(b => b is ThinkingContent));
+        Assert.Contains(sent, m => m.Role == ChatRole.Assistant && m.TryGetText() == "earlier answer");
+
+        // The persisted session keeps the original thinking entry.
+        var entries = await ReadEntriesAsync(fx.Manager, fx.Cwd, session.Id);
+        Assert.Contains(entries, e => e.Content.Any(b => b is ThinkingContent));
+    }
+
+    [Fact]
+    public async Task HandoffToAnthropicStyleProvider_KeepsThinking()
+    {
+        using var fx = new Fixture();
+        var provider = new ScriptedProvider("anthropic-faux", "ok");
+        fx.Registry.RegisterProvider(provider);
+        var session = fx.Manager.CreateSession(fx.Cwd, ThinkingSeed());
+
+        var input = new ScriptedInput(
+        [
+            ..Keys.Type("continue"), Keys.Enter,
+            ..Keys.Type("/quit"), Keys.Enter
+        ]);
+        var output = new CapturingOutput();
+        var loop = NewLoop(fx, input, output,
+            providerId: "anthropic-faux", modelId: "anthropic-faux-model", sessionRef: session.Id);
+
+        await loop.RunAsync();
+
+        var sent = provider.Requests[0].Messages;
+        Assert.Contains(sent, m => m.Content.Any(b => b is ThinkingContent { Thinking: "private reasoning" }));
+    }
+
+    // --- 7e: image input (@path expansion + vision guard) -----------------------
+
+    private static void WritePng(string cwd, string name)
+    {
+        // Bytes don't matter for the wire assertion; name/mime/base64 do.
+        File.WriteAllBytes(Path.Combine(cwd, name), [0x89, (byte)'P', (byte)'N', (byte)'G']);
+    }
+
+    [Fact]
+    public async Task ImageToken_BecomesImageBlock_WhenModelSupportsVision()
+    {
+        using var fx = new Fixture();
+        var provider = new ScriptedProvider("faux", supportsVision: true, "ok");
+        fx.Registry.RegisterProvider(provider);
+        WritePng(fx.Cwd, "cat.png");
+
+        var input = new ScriptedInput(
+        [
+            ..Keys.Type("describe @cat.png please"), Keys.Enter,
+            ..Keys.Type("/quit"), Keys.Enter
+        ]);
+        var output = new CapturingOutput();
+        var loop = NewLoop(fx, input, output);
+
+        await loop.RunAsync();
+
+        var user = provider.Requests[0].Messages.Last(m => m.Role == ChatRole.User);
+        var image = Assert.Single(user.Content.OfType<ImageContent>());
+        Assert.Equal("image/png", image.MimeType);
+        Assert.Equal(
+            Convert.ToBase64String(File.ReadAllBytes(Path.Combine(fx.Cwd, "cat.png"))),
+            image.Data);
+        Assert.Equal("describe please", user.TryGetText());
+    }
+
+    [Fact]
+    public async Task ImageToken_NonVisionModel_SkipsAttachment_WithMessage()
+    {
+        using var fx = new Fixture();
+        var provider = new ScriptedProvider("faux", "ok"); // SupportsVision = false
+        fx.Registry.RegisterProvider(provider);
+        WritePng(fx.Cwd, "cat.png");
+
+        var input = new ScriptedInput(
+        [
+            ..Keys.Type("describe @cat.png"), Keys.Enter,
+            ..Keys.Type("/quit"), Keys.Enter
+        ]);
+        var output = new CapturingOutput();
+        var loop = NewLoop(fx, input, output);
+
+        await loop.RunAsync();
+
+        Assert.Contains(output.YellowLines, l => l.Contains("does not accept image input"));
+        var user = provider.Requests[0].Messages.Last(m => m.Role == ChatRole.User);
+        Assert.Empty(user.Content.OfType<ImageContent>());
+        Assert.Equal("describe", user.TryGetText());
+    }
+
+    [Fact]
+    public async Task ImageToken_MissingFile_StaysAsText()
+    {
+        using var fx = new Fixture();
+        var provider = new ScriptedProvider("faux", supportsVision: true, "ok");
+        fx.Registry.RegisterProvider(provider);
+
+        var input = new ScriptedInput(
+        [
+            ..Keys.Type("look at @missing.png"), Keys.Enter,
+            ..Keys.Type("/quit"), Keys.Enter
+        ]);
+        var output = new CapturingOutput();
+        var loop = NewLoop(fx, input, output);
+
+        await loop.RunAsync();
+
+        var user = provider.Requests[0].Messages.Last(m => m.Role == ChatRole.User);
+        Assert.Empty(user.Content.OfType<ImageContent>());
+        Assert.Equal("look at @missing.png", user.TryGetText());
+    }
+
+    // --- 7f: /export and /import ------------------------------------------------
+
+    [Fact]
+    public async Task Export_Jsonl_ThenImport_RoundTrips_AndContinuesSession()
+    {
+        using var fx = new Fixture();
+        var provider = new ScriptedProvider("faux", "answer");
+        fx.Registry.RegisterProvider(provider);
+
+        var input = new ScriptedInput(
+        [
+            ..Keys.Type("hello world"), Keys.Enter,
+            ..Keys.Type("/export jsonl out/session.jsonl"), Keys.Enter,
+            ..Keys.Type("/quit"), Keys.Enter
+        ]);
+        var output = new CapturingOutput();
+        var loop = NewLoop(fx, input, output);
+
+        await loop.RunAsync();
+
+        var exportedPath = Path.Combine(fx.Cwd, "out", "session.jsonl");
+        Assert.True(File.Exists(exportedPath));
+        Assert.Contains("[export] 2 entries", output.All);
+        Assert.Equal(2, File.ReadAllLines(exportedPath).Length); // user + assistant
+
+        // Import into a fresh loop and continue the conversation.
+        var input2 = new ScriptedInput(
+        [
+            ..Keys.Type("/import out/session.jsonl"), Keys.Enter,
+            ..Keys.Type("again"), Keys.Enter,
+            ..Keys.Type("/quit"), Keys.Enter
+        ]);
+        var output2 = new CapturingOutput();
+        var loop2 = NewLoop(fx, input2, output2);
+
+        await loop2.RunAsync();
+
+        Assert.Contains("[import] session", output2.All);
+        var sent = provider.Requests[1].Messages;
+        Assert.Contains(sent, m => m.Role == ChatRole.User && m.TryGetText() == "hello world");
+        Assert.Contains(sent, m => m.Role == ChatRole.Assistant && m.TryGetText() == "answer");
+        Assert.Contains(sent, m => m.Role == ChatRole.User && m.TryGetText() == "again");
+    }
+
+    [Fact]
+    public async Task Export_Html_WritesStandaloneFile()
+    {
+        using var fx = new Fixture();
+        var provider = new ScriptedProvider("faux", "answer");
+        fx.Registry.RegisterProvider(provider);
+
+        var input = new ScriptedInput(
+        [
+            ..Keys.Type("hello html"), Keys.Enter,
+            ..Keys.Type("/export html page.html"), Keys.Enter,
+            ..Keys.Type("/quit"), Keys.Enter
+        ]);
+        var output = new CapturingOutput();
+        var loop = NewLoop(fx, input, output);
+
+        await loop.RunAsync();
+
+        var html = await File.ReadAllTextAsync(Path.Combine(fx.Cwd, "page.html"));
+        Assert.StartsWith("<!DOCTYPE html>", html);
+        Assert.Contains("hello html", html);
+        Assert.EndsWith("</html>" + Environment.NewLine, html);
+    }
+
+    [Fact]
+    public async Task Export_MissingFormat_PrintsUsage()
+    {
+        using var fx = new Fixture();
+        fx.Registry.RegisterProvider(new ScriptedProvider("faux"));
+
+        var input = new ScriptedInput(
+        [
+            ..Keys.Type("/export nope out.txt"), Keys.Enter,
+            ..Keys.Type("/quit"), Keys.Enter
+        ]);
+        var output = new CapturingOutput();
+        var loop = NewLoop(fx, input, output);
+
+        await loop.RunAsync();
+
+        Assert.Contains(output.RedLines, l => l.Contains("Usage: /export jsonl|html"));
+    }
+
+    [Fact]
+    public async Task Import_MalformedFile_FailsCleanly_WithoutCorruptingCurrentSession()
+    {
+        using var fx = new Fixture();
+        var provider = new ScriptedProvider("faux", "ok");
+        fx.Registry.RegisterProvider(provider);
+        await File.WriteAllTextAsync(Path.Combine(fx.Cwd, "broken.jsonl"), "{not json\n");
+
+        var input = new ScriptedInput(
+        [
+            ..Keys.Type("first turn"), Keys.Enter,
+            ..Keys.Type("/import broken.jsonl"), Keys.Enter,
+            ..Keys.Type("second turn"), Keys.Enter,
+            ..Keys.Type("/quit"), Keys.Enter
+        ]);
+        var output = new CapturingOutput();
+        var loop = NewLoop(fx, input, output);
+
+        var code = await loop.RunAsync();
+
+        Assert.Equal(0, code);
+        Assert.Contains(output.RedLines, l => l.Contains("[import]"));
+        // The pre-import session kept working: both turns persisted there.
+        var files = fx.Manager.ListSessions(fx.Cwd);
+        var busiest = files.OrderByDescending(f => f.EntryCount).First();
+        var entries = await ReadEntriesAsync(fx.Manager, fx.Cwd, busiest.SessionId);
+        var all = JoinText(entries);
+        Assert.Contains("first turn", all);
+        Assert.Contains("second turn", all);
+    }
+
+    [Fact]
+    public async Task Import_MissingFile_ReportsNotFound()
+    {
+        using var fx = new Fixture();
+        fx.Registry.RegisterProvider(new ScriptedProvider("faux"));
+
+        var input = new ScriptedInput(
+        [
+            ..Keys.Type("/import nope.jsonl"), Keys.Enter,
+            ..Keys.Type("/quit"), Keys.Enter
+        ]);
+        var output = new CapturingOutput();
+        var loop = NewLoop(fx, input, output);
+
+        await loop.RunAsync();
+
+        Assert.Contains(output.RedLines, l => l.Contains("file not found"));
+    }
 }

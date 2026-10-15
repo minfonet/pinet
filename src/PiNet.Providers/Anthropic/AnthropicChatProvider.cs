@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using PiNet.Abstractions.Auth;
 using PiNet.Abstractions.Chat;
 using PiNet.Abstractions.Models;
@@ -12,7 +13,11 @@ namespace PiNet.Providers.Anthropic;
 public sealed class AnthropicChatProvider : IChatProvider
 {
     private const string ApiVersion = "2023-06-01";
-    private static readonly JsonSerializerOptions JsonOpts = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
+    private static readonly JsonSerializerOptions JsonOpts = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+    };
 
     private readonly HttpClient _http;
     private readonly string _baseUrl;
@@ -58,7 +63,7 @@ public sealed class AnthropicChatProvider : IChatProvider
 
         yield return new StreamStart(Id, request.ModelId, null);
 
-        var json = JsonSerializer.Serialize(BuildPayload(request), JsonOpts);
+        var json = BuildPayloadJson(request);
         using var payload = new StringContent(json, Encoding.UTF8, "application/json");
         using var httpRequest = new HttpRequestMessage(HttpMethod.Post, $"{_baseUrl}/v1/messages")
         {
@@ -267,16 +272,32 @@ public sealed class AnthropicChatProvider : IChatProvider
         return new Usage(input, output, cacheRead, cacheWrite, new Cost(0, 0, 0, 0));
     }
 
-    private static object BuildPayload(ChatRequest request) => new
+    /// <summary>Builds the <c>/v1/messages</c> payload (internal for wire-level tests).</summary>
+    internal static string BuildPayloadJson(ChatRequest request) =>
+        JsonSerializer.Serialize(BuildPayload(request), JsonOpts);
+
+    private static object BuildPayload(ChatRequest request)
     {
-        model = request.ModelId,
-        system = request.SystemPrompt,
-        max_tokens = request.MaxTokens ?? 4096,
-        stream = true,
-        temperature = request.Temperature ?? 1,
-        messages = BuildMessages(request),
-        tools = BuildTools(request.Tools)
-    };
+        var maxTokens = request.MaxTokens ?? 4096;
+        return new
+        {
+            model = request.ModelId,
+            system = request.SystemPrompt,
+            max_tokens = maxTokens,
+            stream = true,
+            temperature = request.Temperature ?? 1,
+            messages = BuildMessages(request),
+            tools = BuildTools(request.Tools),
+            thinking = BuildThinking(request.ThinkingLevel, maxTokens)
+        };
+    }
+
+    /// <summary><c>thinking: { type: "enabled", budget_tokens }</c> or null when thinking is off.</summary>
+    private static object? BuildThinking(ThinkingLevel? level, int maxTokens)
+    {
+        var budget = ThinkingMapper.ToAnthropicBudgetTokens(level, maxTokens);
+        return budget is null ? null : new { type = "enabled", budget_tokens = budget.Value };
+    }
 
     private static List<object> BuildMessages(ChatRequest request)
     {

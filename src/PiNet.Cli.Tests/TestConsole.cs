@@ -8,7 +8,15 @@ namespace PiNet.Cli.Tests;
 
 public static class Keys
 {
-    public static ConsoleKeyInfo Char(char c) => new(c, (ConsoleKey)c, false, false, false);
+    public static ConsoleKeyInfo Char(char c) => new(c, KeyFor(c), false, false, false);
+
+    private static ConsoleKey KeyFor(char c) => c switch
+    {
+        // '.' would otherwise collide with ConsoleKey.Delete (both 46) and be
+        // swallowed by the line editor; real terminals report OemPeriod.
+        '.' => ConsoleKey.OemPeriod,
+        _ => (ConsoleKey)c
+    };
     public static ConsoleKeyInfo Key(ConsoleKey key, ConsoleModifiers modifiers = 0) =>
         new('\0', key, (modifiers & ConsoleModifiers.Shift) != 0,
             (modifiers & ConsoleModifiers.Alt) != 0,
@@ -53,6 +61,9 @@ public sealed class CapturingOutput : IConsoleOutput
 
     public IEnumerable<string> RedLines =>
         Writen.Where(w => w.Color == ConsoleColor.Red).Select(w => w.Text);
+
+    public IEnumerable<string> YellowLines =>
+        Writen.Where(w => w.Color == ConsoleColor.Yellow).Select(w => w.Text);
 }
 
 /// <summary>Provider whose first generation never completes until cancelled.</summary>

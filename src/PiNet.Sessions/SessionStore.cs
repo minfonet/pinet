@@ -39,13 +39,7 @@ public static class SessionStore
         await File.AppendAllTextAsync(path, builder.ToString(), Encoding.UTF8, ct);
     }
 
-    private static string SerializeLine(SessionEntry entry)
-    {
-        using var ms = new MemoryStream();
-        using (var writer = new Utf8JsonWriter(ms, SessionJson.WriterOptions))
-            SessionJson.WriteEntry(writer, entry);
-        return Encoding.UTF8.GetString(ms.ToArray());
-    }
+    private static string SerializeLine(SessionEntry entry) => SessionJson.WriteEntryText(entry);
 
     private static async IAsyncEnumerable<string> ReadLinesAsync(string path, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
     {

@@ -32,6 +32,15 @@ public static class SessionJson
         writer.WriteEndObject();
     }
 
+    /// <summary>Serializes a single entry to its JSONL text (no trailing newline).</summary>
+    public static string WriteEntryText(SessionEntry entry)
+    {
+        using var ms = new MemoryStream();
+        using (var writer = new Utf8JsonWriter(ms, WriterOptions))
+            WriteEntry(writer, entry);
+        return Encoding.UTF8.GetString(ms.ToArray());
+    }
+
     public static SessionEntry ReadEntry(string line)
     {
         using var doc = JsonDocument.Parse(line, DocOptions);

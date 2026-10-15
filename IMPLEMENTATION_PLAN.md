@@ -38,31 +38,21 @@ The original Pi project (TypeScript/Node.js) is structured as a monorepo with th
 | 4 — Interactive CLI & TUI | [DONE] verified (spec `docs/spec/04`) |
 | 5 — Permissions & Tool Security | [DONE] verified (spec `docs/spec/05`) |
 | 6 — Extensions & Skills | [DONE] verified (spec `docs/spec/06`) |
-| 7 — Advanced Features | [IN PROGRESS] 7a steering/follow-up + 7b context compaction verified (spec `docs/spec/08`); 7c–7g skeleton |
-| 8 — Polish, Packaging & Release | [PENDING] |
+| 7 — Advanced Features | [DONE] verified (spec `docs/spec/08`); 7a.2 CLI capture deferred |
+| 8 — Polish, Packaging & Release | [IN PROGRESS] scaffolding committed; release automation pending |
 
 Verified baseline: `dotnet build PiNet.slnx` clean (0 warnings / 0 errors);
-`dotnet test PiNet.slnx` — 307 passing (18 Providers + 47 Permissions + 44
-AgentCore + 20 Sessions + 114 Cli + 64 Extensions).
+`dotnet test PiNet.slnx` — 370 passing (34 Providers + 47 Permissions + 52
+AgentCore + 26 Sessions + 147 Cli + 64 Extensions).
 
 ### Recommended implementation order (remaining work)
 
-1. **7g — Settings** — `~/.pinet/settings.json` + `<cwd>/.pi/settings.json`,
-   `/settings` command; merge with project winning. Also fixes the `SessionManager`
-   session root to honor `PI_NET_HOME` (currently hard-coded to `~/.pinet/sessions`).
-2. **7c — Thinking levels** — add `ThinkingLevel?` to `ModelRequest`/`ChatRequest`
-   + `Agent` passes `State.ThinkingLevel`; provider mapping (OpenAI `reasoning_effort`,
-   Anthropic `thinking.enabled` + `budget_tokens`); persist `ThinkingContent`; `/thinking <level>` + `--thinking`.
-3. **7d — Cross-provider handoff** — faithful `ConvertToLlm` (normalize/drop
-   `ThinkingContent` per target provider) + `/model` picker with no argument.
-4. **7e — Image input** — `@image.png` editor expansion (resolve, base64, `ImageContent`
-   + inferred MIME), guarded by `ModelDefinition.SupportsVision`.
-5. **7f — Export / import** — standalone styled HTML export; JSONL export/import.
-6. **8 — Packaging / CI / Release** — CI, `dotnet tool` packaging, self-contained
-   publish, README quick-start, self-update.
-7. **Deferred** — 7a.2 in-flight keystroke capture (Enter → steer, Alt+Enter →
-   follow-up); network smoke tests (Stage 6 `install npm:`/`git:` + extension tool
-   invoked by a real LLM).
+1. **8 — Packaging / CI / Release** — release workflow (tag → `dotnet pack` +
+   publish), self-contained per-RID publishes, `pinet update --self`,
+   SBOM/telemetry decisions; CI is already in `.github/workflows/ci.yml`.
+2. **Deferred** — 7a.2 in-flight keystroke capture (Enter → steer, Alt+Enter →
+   follow-up); 7e clipboard images; 7g settings hot-reload; network smoke tests
+   (Stage 6 `install npm:`/`git:` + extension tool invoked by a real LLM).
 
 ---
 
@@ -314,9 +304,10 @@ gateways); config guide in `docs/local-llms.md`.
 
 ---
 
-## Stage 7 — Advanced Features — [IN PROGRESS]
+## Stage 7 — Advanced Features — [DONE] verified
 
-**Goal:** Feature parity with Pi's advanced capabilities.
+**Goal:** Feature parity with Pi's advanced capabilities (spec
+`docs/spec/08`, verified 2026-10-15).
 
 ### Deliverables
 
@@ -334,35 +325,44 @@ gateways); config guide in `docs/local-llms.md`.
     as a new entry, and rewinds the persistence watermark
   - Usage tracking (`LastUsage`/`TotalUsage`) feeds the threshold via
     `max(estimate, LastPromptTokens)`
-- Cross-provider handoff (7d): 🔄 skeleton
-  - `/model <provider>/<id>` already rebuilds the agent with current messages
-  - `ConvertToLlm` is an identity stub; must normalize content per target provider
-    (drop/replace `ThinkingContent` for providers that don't support it)
-  - `/model` picker with no argument (list providers/models, select) — pending
-- Reasoning/thinking levels (7c): 🔄 skeleton
-  - `ThinkingLevel` enum + `AgentState.ThinkingLevel` present; `ThinkingMapper` stub
-  - Provider mapping + `ThinkingContent` persistence pending
-- Image input support (7e): 🔄 skeleton
-  - `ImageContent` supported; `@image` editor expansion + vision guard not fully wired
-- Export/import (7f): 🔄 skeleton
-  - `SessionExport` stubs for JSONL/HTML; CLI commands pending
-- Settings (7g): 🔄 skeleton
-  - `SettingsManager` loads global/project JSON; `/settings` + hot-reload pending; `SessionManager` root via `PI_NET_HOME` pending
+- Cross-provider handoff (7d): ✅ verified
+  - `/model <provider>/<id>` rebuilds the agent with current messages; `/model`
+    with no argument lists providers/models
+  - `ConvertToLlm` wired to `MessageNormalizer.ForProvider`: content is
+    normalized per target provider (`ThinkingContent` dropped for non-Anthropic
+    targets), the persisted session keeps the originals
+- Reasoning/thinking levels (7c): ✅ verified
+  - `ThinkingLevel` plumbed `AgentState` → `ModelRequest` → `ChatRequest`
+  - Provider mapping: OpenAI `reasoning_effort`, Anthropic `thinking.enabled` +
+    `budget_tokens`; `Off` sends no thinking fields
+  - `ThinkingContent` captured from the stream and persisted; `/thinking [level]`
+    and `--thinking <level>`
+- Image input support (7e): ✅ verified
+  - `@image.png` editor expansion (base64 + inferred MIME, session cwd) built
+    into multi-block user messages; `ModelDefinition.SupportsVision` guard with a
+    clear notice; clipboard images deferred
+- Export/import (7f): ✅ verified
+  - `/export jsonl|html <path>` (JSONL = all entries; HTML = standalone styled
+    active branch); `/import <path.jsonl>` imports into a new persisted session
+    and continues it; malformed files fail cleanly
+- Settings (7g): ✅ verified
+  - `SettingsManager` (global `~/.pinet/settings.json` + project
+    `.pi/settings.json`, project wins, malformed warns), `/settings`, CLI flag
+    precedence, `SessionManager` root via `PI_NET_HOME`; hot-reload deferred
 
 ### Acceptance Criteria
 
-- Send a steering message while agent is executing a tool — agent receives it after current turn
-- Switch from Claude to GPT-4o mid-session — conversation continues seamlessly
-- Toggle thinking from `off` to `high` — reasoning tokens appear in UI
-- Paste a screenshot, agent describes what it sees
+- [x] Send a steering message while agent is executing a tool — agent receives it after current turn (agent core verified; CLI keystroke capture 7a.2 deferred)
+- [x] Switch from Claude to GPT-4o mid-session — conversation continues seamlessly (`MessageNormalizer` handoff)
+- [x] Toggle thinking from `off` to `high` — reasoning tokens appear in UI (`/thinking`, `--thinking`)
+- [~] Attach a screenshot — `@image.png` files are attached for vision models; clipboard paste deferred
 
 ---
 
 ## Pending Tests Summary
 
 The following acceptance criteria / features still lack dedicated unit/integration
-integration tests. (Stage 7b is fully covered — its rows below are marked ✅ Done;
-16 new tests were added in the 7b implementation.)
+integration tests. (Stage 7 is fully covered — its rows below are marked ✅ Done.)
 
 | Stage | Feature / AC | Test Status | Notes |
 |-------|--------------|-------------|-------|
@@ -385,20 +385,25 @@ integration tests. (Stage 7b is fully covered — its rows below are marked ✅ 
 | 7b | `ContextCompactor` auto-compact threshold & caching | ✅ Done | `ContextCompactorTests` (7 tests) |
 | 7b | Manual `/compact` persists summary and rewinds watermark | ✅ Done | `InteractiveLoopTests` `/compact` (4 tests) |
 | 7b | Usage tracking `LastUsage/TotalUsage` accumulation | ✅ Done | `UsageTrackingTests` (3 tests) |
-| 7c-7g | Thinking levels, cross-provider handoff, image input, export/import, settings | Missing | Not started (recommended order: 7g → 7c → 7d → 7e → 7f) |
+| 7c | Thinking levels end-to-end (payloads, capture, `/thinking`, `--thinking`) | ✅ Done | `ThinkingPayloadTests` (16), `ThinkingTests` (3), 4 CLI tests |
+| 7d | Cross-provider handoff (`ConvertToLlm` normalization, `/model` picker) | ✅ Done | `MessageNormalizerTests` (5), 2 CLI handoff tests |
+| 7e | Image input (`@image` expansion, vision guard) | ✅ Done | 3 CLI image tests |
+| 7f | Export/import (JSONL round-trip, HTML, malformed files) | ✅ Done | `SessionExportTests` (6), 5 CLI tests |
+| 7g | Settings (global/project merge, `/settings`, `PI_NET_HOME`) | ✅ Done | `SettingsTests` (19) |
 
-## Stage 8 — Polish, Packaging & Release — [PENDING]
+## Stage 8 — Polish, Packaging & Release — [IN PROGRESS]
 
 **Goal:** Production-ready release with documentation and CI/CD.
 
 ### Deliverables
 
-- CLI packaging: `PackAsTool`, `ToolCommandName`, `install.ps1`/`install.sh`
-- Build & CI: `.github/workflows/ci.yml` builds and tests
-- Documentation: `docs/packaging.md`
-- Remaining: self-contained publish, NuGet publish, SBOM, telemetry opt-in
+- CLI packaging: `PackAsTool`, `ToolCommandName`, `install.ps1`/`install.sh` — ✅ committed
+- Build & CI: `.github/workflows/ci.yml` builds and tests — ✅ committed
+- Documentation: `docs/packaging.md` — ✅ committed
+- Remaining: release workflow (tag → `dotnet pack`/publish), self-contained
+  publish per RID, `pinet update --self`, SBOM/telemetry opt-in
 
-### Deliverables
+### Full scope
 
 - CLI packaging:
   - `dotnet tool` packaging (`dotnet pack` + NuGet publishing)
@@ -447,12 +452,12 @@ pinet/
 │   ├── PiNet.Permissions/           # Permission gates and policies
 │   ├── PiNet.Extensions/            # [Stage 6] extension/skill/prompt discovery
 │   ├── PiNet.Cli/                   # Console app entry point (incl. interactive layer)
-│   ├── PiNet.AgentCore.Tests/       # 44 tests
-│   ├── PiNet.Sessions.Tests/        # 20 tests
+│   ├── PiNet.AgentCore.Tests/       # 52 tests
+│   ├── PiNet.Sessions.Tests/        # 26 tests
 │   ├── PiNet.Permissions.Tests/     # 47 tests
-│   ├── PiNet.Providers.Tests/       # 18 tests [spec 07]
+│   ├── PiNet.Providers.Tests/       # 34 tests [spec 07 + 08 §7c]
 │   ├── PiNet.Extensions.Tests/      # 64 tests [Stage 6]
-│   └── PiNet.Cli.Tests/             # 114 tests
+│   └── PiNet.Cli.Tests/             # 147 tests
 ├── docs/                            # specs (01–08), ADRs, guides
 ├── .github/workflows/               # [Stage 8]
 ├── PiNet.slnx
@@ -491,6 +496,6 @@ reference `xunit` + `Microsoft.NET.Test.Sdk`.
 ---
 
 *Plan created: 2026-09-09*
-*Last updated: 2026-09-21 — 7a + 7b verified, 307 tests passing. Next per recommended order: 7g → 7c → 7d → 7e → 7f → Stage 8; see `STATUS.md`.*
+*Last updated: 2026-10-15 — Stage 7 verified (7a–7g), 370 tests passing. Next: Stage 8 release automation; see `STATUS.md`.*
 *Target: .NET 10 (preview → GA)*
 *Reference: https://github.com/earendil-works/pi*

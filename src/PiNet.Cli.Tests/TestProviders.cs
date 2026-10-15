@@ -22,7 +22,9 @@ public sealed class ScriptedProvider : IChatProvider
 
     public List<ChatRequest> Requests { get; } = [];
 
-    public ScriptedProvider(string id, params string[] answers)
+    public ScriptedProvider(string id, params string[] answers) : this(id, supportsVision: false, answers) { }
+
+    public ScriptedProvider(string id, bool supportsVision, params string[] answers)
     {
         Id = id;
         Models =
@@ -32,7 +34,8 @@ public sealed class ScriptedProvider : IChatProvider
                 Provider = id,
                 Id = $"{id}-model",
                 Name = $"{id} model",
-                ContextWindow = 1000
+                ContextWindow = 1000,
+                SupportsVision = supportsVision
             }
         ];
         foreach (var answer in answers)

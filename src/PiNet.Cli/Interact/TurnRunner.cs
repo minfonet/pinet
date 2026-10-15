@@ -1,3 +1,4 @@
+using PiNet.Abstractions.Chat;
 using PiNet.AgentCore;
 using PiNet.Sessions;
 
@@ -48,11 +49,18 @@ public sealed class TurnRunner : IDisposable
     /// </summary>
     public void MarkPersisted(int count) => PriorMessageCount = count;
 
-    public async Task<TurnResult> RunAsync(string prompt, CancellationToken ct)
+    public async Task<TurnResult> RunAsync(string prompt, CancellationToken ct) =>
+        await RunCoreAsync(() => Agent.PromptAsync(prompt, ct), ct);
+
+    /// <summary>Runs a turn with a full user message (e.g. text + image attachments, 7e).</summary>
+    public async Task<TurnResult> RunAsync(ChatMessage message, CancellationToken ct) =>
+        await RunCoreAsync(() => Agent.PromptAsync(message, ct), ct);
+
+    private async Task<TurnResult> RunCoreAsync(Func<Task> prompt, CancellationToken ct)
     {
         try
         {
-            await Agent.PromptAsync(prompt, ct);
+            await prompt();
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
