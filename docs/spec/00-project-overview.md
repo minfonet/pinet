@@ -79,8 +79,8 @@ features — those are extension points.
 | 5 | Permissions & Tool Security | Verified (see [05-stage-5-permissions.md](05-stage-5-permissions.md)) |
 | 6 | Extension System & Skills | Verified (see [06-stage-6-extensions-skills.md](06-stage-6-extensions-skills.md)) |
 | — | Local & Custom LLM Providers (spec 07) | Verified (see [07-local-llm-providers.md](07-local-llm-providers.md)) |
-| 7 | Advanced Features | In progress — 7a verified (see [08-stage-7-advanced-features.md](08-stage-7-advanced-features.md)) |
-| 8 | Polish, Packaging & Release | Not started |
+| 7 | Advanced Features | Verified (see [08-stage-7-advanced-features.md](08-stage-7-advanced-features.md)) |
+| 8 | Polish, Packaging & Release | Done — packaging/release verified locally; first NuGet.org push pending |
 
 ## 6. Conventions
 

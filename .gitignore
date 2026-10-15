@@ -24,3 +24,6 @@ Thumbs.db
 # Local secrets / env
 .env
 *.local
+
+# Code-graph artifact (graphify)
+graph/
