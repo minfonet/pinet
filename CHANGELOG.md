@@ -22,8 +22,8 @@ Initial complete implementation: stages 1–8 of
 [spec 01–08](docs/spec/) verified against the running CLI.
 
 **Verified state:** `dotnet build PiNet.slnx` clean (0 warnings, 0 errors);
-`dotnet test PiNet.slnx` — 371 passing, 0 failing (34 Providers + 47 Permissions
-+ 52 AgentCore + 26 Sessions + 148 Cli + 64 Extensions).
+`dotnet test PiNet.slnx` — 380 passing, 0 failing (34 Providers + 49 Permissions
++ 52 AgentCore + 27 Sessions + 154 Cli + 64 Extensions).
 
 ### Stage 1 — Foundation & Unified LLM abstraction
 
@@ -80,7 +80,10 @@ Initial complete implementation: stages 1–8 of
 ### Stage 7 — Advanced features ([spec 08](docs/spec/08-stage-7-advanced-features.md))
 
 - **7a Steering & follow-up** — `Steer`/`FollowUp` queues with `OneAtATime`/`All`
-  modes and turn-boundary draining. (CLI keystroke capture deferred, see below.)
+  modes and turn-boundary draining; the interactive loop captures keystrokes
+  while a turn is in flight (Enter → steer, Alt+Enter → follow-up, Ctrl+C
+  cancels the turn, unsubmitted text carries over to the next prompt); the
+  permission prompt pauses the capture via `InputArbiter`.
 - **7b Context compaction** — auto-compaction by token threshold
   (`--compact`, `--compact-threshold`, `--compact-preserve`) and manual
   `/compact [instructions]`; the summary is persisted and the JSONL history
@@ -130,8 +133,6 @@ Initial complete implementation: stages 1–8 of
 
 Documented and intentionally not part of 0.1.0:
 
-- 7a.2 — in-flight keystroke capture during a running turn (Enter → steer,
-  Alt+Enter → follow-up).
 - 7e — clipboard/paste image input (platform-dependent, optional per spec).
 - 7g — settings hot-reload during a running session (restart picks changes up).
 - Stage 6 network smoke tests (`npm:`/`git:` installs, extension tool invoked by

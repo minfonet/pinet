@@ -1,6 +1,6 @@
 # PiNet — Project Status
 
-> Last updated: 2026-10-15
+> Last updated: 2026-10-16
 > Companion to [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md). Per-stage detail lives in
 > [`docs/spec/`](docs/spec/) (spec-driven development: spec written before code, then verified).
 
@@ -9,9 +9,9 @@
 | Item | State |
 |------|-------|
 | Solution | `PiNet.slnx` — builds clean (0 warnings, 0 errors) |
-| Tests | **371 passing** (34 `PiNet.Providers.Tests` + 47 `PiNet.Permissions.Tests` + 52 `PiNet.AgentCore.Tests` + 26 `PiNet.Sessions.Tests` + 148 `PiNet.Cli.Tests` + 64 `PiNet.Extensions.Tests`), 0 failing |
+| Tests | **380 passing** (34 `PiNet.Providers.Tests` + 49 `PiNet.Permissions.Tests` + 52 `PiNet.AgentCore.Tests` + 27 `PiNet.Sessions.Tests` + 154 `PiNet.Cli.Tests` + 64 `PiNet.Extensions.Tests`), 0 failing |
 | Current stage | **Stage 8 — Packaging / CI / Release** — packaging + release workflow + `pinet update --self` implemented and verified locally; NuGet.org publication pending |
-| Stages complete | 1, 2, 3, 4, 5, 6 + spec 07 + spec 08 (specs verified against the running CLI) |
+| Stages complete | 1, 2, 3, 4, 5, 6 + spec 07 + spec 08 (incl. 7a.2; specs verified against the running CLI) |
 | Packaging | `dotnet pack` → `PiNet.0.1.0.nupkg` verified (tool install + run from a local feed); self-contained `win-x64` publish verified; CI + release workflows committed; `scripts/publish.ps1` for local per-RID publishes |
 
 ## Projects
@@ -22,13 +22,13 @@
 | `PiNet.Providers` | `ChatService` facade; OpenAI + Anthropic providers (raw HTTP + SSE, ADR-0001; `reasoning_effort` / `thinking.enabled` payloads); `Faux` provider for deterministic tests; per-provider model catalogs; Pi-compatible custom providers via `~/.pinet/models.json` (`ModelsConfig`, `ConfigCredentialResolver`, spec 07) | Done (Stages 1, 6, 7c) |
 | `PiNet.AgentCore` | `Agent` loop (`PromptAsync`/`ContinueAsync`/`Abort`/`Subscribe`), `AgentEvent` lifecycle, parallel/sequential tool execution, `BeforeToolCall`/`AfterToolCall` hooks, `TransformContext`/`ConvertToLlm` (wired: compaction + cross-provider normalization), built-in tools (`read`, `write`, `edit`, `bash`); steering/follow-up queues (`Steer`/`FollowUp`, `QueueMode`, turn-boundary drain, spec 08 §7a); `MessageNormalizer` (spec 08 §7d) | Done (Stages 2, 7a, 7d) |
 | `PiNet.Sessions` | JSONL tree sessions (`Session`, `SessionEntry`, `SessionStore`, `SessionJson`), `SessionManager` (create/load/latest/list/fork, append watermark), `SessionCompactor` (LLM summarization), `ContextCompactor` (spec 08 §7b), `SessionExport` (JSONL/HTML export + import, spec 08 §7f) | Done (Stages 3, 7b, 7f) |
-| `PiNet.Cli` | Entry point: `-p/--print`, `--agent` one-shot, `--interactive/-i` loop, session flags (`--session`, `-c`, `--fork`, `--no-session`), `--list-models`, `--approve`/`--no-approve`, `--thinking`, `--compact*`, `install/list/remove/update` package subcommands, `--no-extensions`/`--no-skills`/`--no-prompt-templates`; interactive layer: `LineEditor`, `LineHistory`, `SlashCommand` (incl. `/trust`, `/skill:`, `/compact`, `/thinking`, `/settings`, `/export`, `/import`), `AgentConsoleRenderer` (shared folding, thinking deltas), `TurnRunner` (shared turn/persist, text + image messages), `InteractiveLoop`, `PermissionGate` + `ConsolePermissionPrompt`; `Extensions/` adapter + `CliEnvironment` setup; `Settings/` (global + project settings, spec 08 §7g) | Done (Stages 4–6, 7b–7g) |
+| `PiNet.Cli` | Entry point: `-p/--print`, `--agent` one-shot, `--interactive/-i` loop, session flags (`--session`, `-c`, `--fork`, `--no-session`), `--list-models`, `--approve`/`--no-approve`, `--thinking`, `--compact*`, `install/list/remove/update` package subcommands, `--no-extensions`/`--no-skills`/`--no-prompt-templates`; interactive layer: `LineEditor`, `LineHistory`, `SlashCommand` (incl. `/trust`, `/skill:`, `/compact`, `/thinking`, `/settings`, `/export`, `/import`), `AgentConsoleRenderer` (shared folding, thinking deltas), `TurnRunner` (shared turn/persist, text + image messages), `InteractiveLoop` (incl. 7a.2 in-flight input pump + `InputArbiter`), `PermissionGate` + `ConsolePermissionPrompt`; `Extensions/` adapter + `CliEnvironment` setup; `Settings/` (global + project settings, spec 08 §7g) | Done (Stages 4–6, 7a.2, 7b–7g) |
 | `PiNet.Permissions` | Zero-project-reference permission layer: `ToolPermission`/`PermissionRule` + `Glob`, `RulePermissionResolver` (safety floor → deny-sticky → session→project→global → default), `PermissionConfig` (JSON load/save, `PI_NET_HOME`), `ToolPaths`, `IPermissionPrompt` (`AutoApprovePrompt`, `DenyAllPrompt`), `TrustStore` | Done (Stage 5) |
 | `PiNet.Extensions` | Extension host (source compiled with SDK Roslyn, cached by content hash) + `IExtension` model; skill registry (`~/.pinet/skills`, `~/.agents/skills`, `.pi/skills`, packages; frontmatter + `SkillCatalog`); prompt templates (+ `TemplateExpander`); context files (`SYSTEM.md`/`AGENTS.md`/`CLAUDE.md` → `SystemPromptBuilder`); tar extractor (zip-slip safe); `PackageManager` (`install/list/remove/update`, path/npm/git) | Done (Stage 6) |
 | `PiNet.AgentCore.Tests` | Loop, hooks, tool execution, built-in tools, steering/follow-up (scripted `IModelRunner`), `TokenEstimator`/usage (spec 08 §7b), thinking capture + cross-provider normalization (spec 08 §7c/§7d) | 52 passing |
-| `PiNet.Sessions.Tests` | Session tree, JSONL store, compactor, `ContextCompactor` (spec 08 §7b), export/import round-trips (spec 08 §7f) | 26 passing |
-| `PiNet.Permissions.Tests` | Rule matching, resolution algorithm, config load/save/malformed, `PI_NET_HOME`, `TrustStore`, `ToolPaths` | 47 passing |
-| `PiNet.Cli.Tests` | Line editor, history, slash parser (incl. `/skill:`), renderer folding, full `InteractiveLoop` tests (scripted keys, `ScriptedProvider`, `HangingProvider`), permission-gate AC1–AC4 tests (`PermissionGateTests`, `ToolCallScript`), `/compact` + `/thinking` + `/export`/`/import` + image-input tests (spec 08 §7b–§7f), `SettingsTests` (spec 08 §7g), plus `SlashSkillTests`, `ExtensionCommandTests`, `TemplateLoopTests`, `CliEnvironmentTests`, `PackageManagerCliTests` (Spec 06, incl. CLI dispatch regression) | 148 passing |
+| `PiNet.Sessions.Tests` | Session tree, JSONL store, compactor, `ContextCompactor` (spec 08 §7b, incl. above/below-threshold auto-compaction), export/import round-trips (spec 08 §7f) | 27 passing |
+| `PiNet.Permissions.Tests` | Rule matching, resolution algorithm, config load/save/malformed (incl. CLI startup error path), `PI_NET_HOME`, `TrustStore`, `ToolPaths` | 49 passing |
+| `PiNet.Cli.Tests` | Line editor, history, slash parser (incl. `/skill:`), renderer folding, full `InteractiveLoop` tests (scripted keys, `ScriptedProvider`, `HangingProvider`, `GatedProvider`), permission-gate AC1–AC4 tests (`PermissionGateTests`, `ToolCallScript`), `/compact` + `/thinking` + `/export`/`/import` + image-input tests (spec 08 §7b–§7f), 7a.2 steering-capture tests (`SteeringCaptureTests`), print-mode token/cost test (`PrintModeCliTests`), `SettingsTests` (spec 08 §7g), plus `SlashSkillTests`, `ExtensionCommandTests`, `TemplateLoopTests`, `CliEnvironmentTests`, `PackageManagerCliTests` (Spec 06, incl. CLI dispatch regression) | 154 passing |
 | `PiNet.Extensions.Tests` | Skill frontmatter/registry/catalog, template expander/registry, context files + system prompt builder, tar extractor, package manager, extension host (incl. real SDK compile + cache reuse) | 64 passing |
 | `PiNet.Providers.Tests` | `models.json` parsing + warnings, `ConfigCredentialResolver` (`$ENV`/literal/fallback), custom provider registration (OpenAI/Anthropic), built-in merge by model id, end-to-end `PI_NET_HOME` (spec 07), thinking payload wire tests (spec 08 §7c) | 34 passing |
 
@@ -147,19 +147,22 @@ Verified: `PiNet.Providers.Tests` 18 passing; CLI `--list-models` with a temp
 `PI_NET_HOME` + `models.json` shows `[ollama] llama3.1:8b` alongside the
 built-ins (exit 0).
 
-### Stage 7 — Advanced Features — ✅ 7a–7g verified (7a.2 deferred)
+### Stage 7 — Advanced Features — ✅ 7a–7g verified (incl. 7a.2)
 Spec [`docs/spec/08`](docs/spec/08-stage-7-advanced-features.md) *Verified*
-(2026-10-15; 7a.2 in-flight keystroke capture deferred).
+(2026-10-16; all sub-stages complete, 7a.2 included).
 Seven sub-stages (7a steering/follow-up, 7b compaction, 7c thinking levels,
 7d cross-provider handoff, 7e image input, 7f export/import, 7g settings).
 
-**7a — Steering & follow-up — ✅ verified (agent core).**
+**7a — Steering & follow-up — ✅ verified (agent core + CLI capture).**
 `Agent.Steer`/`FollowUp` (thread-safe queues) inject messages at turn
 boundaries; `QueueMode.OneAtATime`/`All`; follow-ups start another turn instead
 of ending the run; injected messages emit `MessageStartEvent`/`MessageEndEvent`;
 `AgentEndEvent` only once both queues are empty. 7 new tests
-(`PiNet.AgentCore.Tests/SteeringTests.cs`). CLI keystroke capture during an
-in-flight turn (Enter → steer, Alt+Enter → follow-up) is deferred (7a.2).
+(`PiNet.AgentCore.Tests/SteeringTests.cs`). **7a.2** — in-flight keystroke
+capture in the interactive loop: an interactive-only input pump reads keys while
+a turn runs (Enter → steer, Alt+Enter → follow-up, Ctrl+C cancels the turn,
+unsubmitted text carries over to the next prompt); `InputArbiter` pauses the pump
+while the permission prompt reads. 5 tests (`PiNet.Cli.Tests/SteeringCaptureTests.cs`).
 
 **7b — Context compaction — ✅ verified.**
 `TokenEstimator`, `AgentState.LastUsage/TotalUsage`, `ContextCompactor`,
@@ -214,10 +217,8 @@ SBOM/signing decisions.
 
 ## Known issues / next steps
 
-1. **Stage 7 — Advanced Features** — ✅ complete (2026-10-15): 7a–7g verified,
-   371 tests passing. Remaining deferred items (documented, non-blocking):
-   - 7a.2 — in-flight keystroke capture during a running turn (Enter → steer,
-     Alt+Enter → follow-up).
+1. **Stage 7 — Advanced Features** — ✅ complete (2026-10-16): 7a–7g verified,
+   380 tests passing. Remaining deferred items (documented, non-blocking):
    - 7e — clipboard/paste image input (platform-dependent, optional per spec).
    - 7g — settings hot-reload during a running session (restart picks up
      changes).
@@ -235,7 +236,7 @@ SBOM/signing decisions.
 
 ```bash
 dotnet build PiNet.slnx        # 0 warnings, 0 errors
-dotnet test PiNet.slnx         # 371/371 passing
+dotnet test PiNet.slnx         # 380/380 passing
 dotnet run --project src/PiNet.Cli -- --list-models
 dotnet run --project src/PiNet.Cli -- --provider faux --model faux-model -p "hi"
 dotnet pack src/PiNet.Cli/PiNet.Cli.csproj -c Release -o artifacts/packages

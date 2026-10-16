@@ -38,22 +38,22 @@ The original Pi project (TypeScript/Node.js) is structured as a monorepo with th
 | 4 — Interactive CLI & TUI | [DONE] verified (spec `docs/spec/04`) |
 | 5 — Permissions & Tool Security | [DONE] verified (spec `docs/spec/05`) |
 | 6 — Extensions & Skills | [DONE] verified (spec `docs/spec/06`) |
-| 7 — Advanced Features | [DONE] verified (spec `docs/spec/08`); 7a.2 CLI capture deferred |
+| 7 — Advanced Features | [DONE] verified (spec `docs/spec/08`, incl. 7a.2) |
 | 8 — Polish, Packaging & Release | [DONE] packaging + release workflow + `pinet update --self` verified locally; first NuGet.org push pending |
 
 Verified baseline: `dotnet build PiNet.slnx` clean (0 warnings / 0 errors);
-`dotnet test PiNet.slnx` — 371 passing (34 Providers + 47 Permissions + 52
-AgentCore + 26 Sessions + 148 Cli + 64 Extensions).
+`dotnet test PiNet.slnx` — 380 passing (34 Providers + 49 Permissions + 52
+AgentCore + 27 Sessions + 154 Cli + 64 Extensions).
 
 ### Recommended implementation order (remaining work)
 
 1. **Publish the first package to NuGet.org** — `dotnet pack` + `dotnet nuget
    push` (or push a `v*` tag once `NUGET_API_KEY` is configured); everything
    else in the release workflow is ready and verified locally.
-2. **Deferred** — 7a.2 in-flight keystroke capture (Enter → steer, Alt+Enter →
-   follow-up); 7e clipboard images; 7g settings hot-reload; network smoke tests
-   (Stage 6 `install npm:`/`git:` + extension tool invoked by a real LLM);
-   SBOM/signing decisions.
+2. **Deferred** — 7e clipboard images; 7g settings hot-reload; network smoke
+   tests (Stage 6 `install npm:`/`git:` + extension tool invoked by a real LLM);
+   SBOM/signing decisions. (7a.2 in-flight keystroke capture is done:
+   `SteeringCaptureTests`, spec 08 §3.3.)
 
 ---
 
@@ -312,10 +312,13 @@ gateways); config guide in `docs/local-llms.md`.
 
 ### Deliverables
 
-- Steering & follow-up: ✅ verified
+- Steering & follow-up: ✅ verified (agent core + 7a.2 CLI capture)
   - `SteerAsync(message)` — inject message while agent is running tools
   - `FollowUpAsync(message)` — queue message for after agent finishes
   - `SteeringMode` / `FollowUpMode`: `OneAtATime` (default) or `All`
+  - 7a.2: interactive loop pumps input during a turn (Enter → steer,
+    Alt+Enter → follow-up, Ctrl+C cancels, unsubmitted text carries over);
+    `InputArbiter` pauses the pump while the permission prompt reads
 - Context compaction (auto + `/compact`): ✅ verified (7b)
   - `TokenEstimator` (character-based, ~4 chars/token); auto-trigger when the
     estimated context exceeds `Threshold * ContextWindow` (`--compact`,
@@ -353,37 +356,39 @@ gateways); config guide in `docs/local-llms.md`.
 
 ### Acceptance Criteria
 
-- [x] Send a steering message while agent is executing a tool — agent receives it after current turn (agent core verified; CLI keystroke capture 7a.2 deferred)
+- [x] Send a steering message while agent is executing a tool — agent receives it after current turn (agent core + 7a.2 CLI capture: type while the turn runs, Enter delivers at the next boundary)
 - [x] Switch from Claude to GPT-4o mid-session — conversation continues seamlessly (`MessageNormalizer` handoff)
 - [x] Toggle thinking from `off` to `high` — reasoning tokens appear in UI (`/thinking`, `--thinking`)
 - [~] Attach a screenshot — `@image.png` files are attached for vision models; clipboard paste deferred
 
 ---
 
-## Pending Tests Summary
+## Test Coverage Summary
 
-The following acceptance criteria / features still lack dedicated unit/integration
-integration tests. (Stage 7 is fully covered — its rows below are marked ✅ Done.)
+Re-audited 2026-10-16: the former "Pending Tests Summary" rows are now covered
+(or were already covered); the table below records the evidence. Stage 7 is
+fully covered.
 
-| Stage | Feature / AC | Test Status | Notes |
-|-------|--------------|-------------|-------|
-| 1 | Provider credential fallback (`$ENV` → literal → default env) | Missing | `ConfigCredentialResolver` has basic tests; fallback chain not covered |
-| 1 | Token/cost tracking printed at `StreamEnd` | Missing | Integration test with `ScriptedProvider` needed |
-| 2 | `Agent.Abort()` cancels in-flight run and does not persist | Missing | Abort path tested partially, no abort-during-tool test |
-| 2 | Sequential tool execution mode | Missing | Only parallel mode exercised |
-| 2 | `AfterToolCall` mutation / termination hint | Missing | Hook invoked but mutation not asserted |
-| 3 | Session fork / clone and tree navigation | Partial | `SessionTests` covers CRUD, fork/clone not unit-tested |
-| 3 | Auto-compact trigger on context overflow | Missing | `CompactorTests` covers LLM summarization, not threshold auto-trigger |
-| 4 | `/model` switch persists across turns | Missing | Model switch tested in loop, persistence not asserted |
-| 4 | `/new` ephemeral session disables persistence | Missing | No test for `NoSession` path |
-| 4 | Ctrl+C on empty prompt exits with code 0 | Missing | Exit code not verified in tests |
-| 5 | Malformed permission config produces startup error | Missing | `ConfigTests` covers good/bad JSON, startup error path not tested |
-| 5 | `PI_NET_HOME` override for permissions | Missing | Only global load tested |
-| 6 | Extension host compilation cache reuse | Missing | `ExtensionHostTests` covers compile, not cache hit |
-| 6 | Skill `disable-model-invocation` frontmatter | Missing | Frontmatter parsed, flag not exercised |
-| 6 | Prompt template `${1:-default}` slice and unknown `$X` keep | Partial | `TemplateTests` covers basic, edge slices missing |
+| Stage | Feature / AC | Test Status | Evidence |
+|-------|--------------|-------------|----------|
+| 1 | Provider credential fallback (`$ENV` → literal → default env) | ✅ Done | `ModelsConfigTests`: `ConfigCredentialResolver_Literal_Used`, `_DollarPrefixed_ReadsEnvVar`, `_MissingEnv_ReturnsNullKey`, `_FallsBackToDefaultEnv` |
+| 1 | Token/cost tracking printed at `StreamEnd` | ✅ Done | `PrintModeCliTests.PrintMode_StreamsReply_AndPrintsTokensAndCost` (faux provider through `Program.RunAsync`) |
+| 2 | `Agent.Abort()` cancels in-flight run and does not persist | ✅ Done | `AgentLoopTests.Abort_CancelsProvider_SetsError_EmitsAgentEndOnce` + CLI `CtrlC_DuringTurn_Cancels_ReturnsToPrompt_AndDoesNotPersist` |
+| 2 | Sequential tool execution mode | ✅ Done | `ToolExecutionTests.SequentialMode_ExecutesStrictlyInAssistantOrder` |
+| 2 | `AfterToolCall` mutation / termination hint | ✅ Done | `AgentHookTests.AfterToolCall_ReplacesResult_InEventAndContext`, `TerminateHint_OnOnlyResult_StopsLoopWithoutFollowUpTurn`, `TerminateHint_PartialInBatch_KeepsLooping` |
+| 3 | Session fork / clone and tree navigation | ✅ Done | `SessionTests.Fork_CopiesBranchTruncatedAtForkPoint_IndependentHistory`, `Clone_DuplicatesEntireTree_IndependentHistory`, `GetActiveBranch_RootToHead`, `JumpTo_TruncatesTail_HeadIsRewound` |
+| 3 | Auto-compact trigger on context overflow | ✅ Done | `ContextCompactorTests.BelowThreshold_NoSummarizerCall_NoCompaction` + `AboveThreshold_AutoCompacts` (+ `ContextWindowZero_AutoNoOp_ForceStillCompacts`) |
+| 4 | `/model` switch persists across turns | ✅ Done | `InteractiveLoopTests.Model_SwitchesProviderAndModel_ForSubsequentTurns`, `CompactThenModelSwitch_SummaryFoldsAcrossSwitch` |
+| 4 | `/new` ephemeral session disables persistence | ✅ Done | `InteractiveLoopTests.NoSession_DisablesPersistenceEntirely`, `NewSession_DisablesPersistence_ForSubsequentTurns` |
+| 4 | Ctrl+C on empty prompt exits with code 0 | ✅ Done | `InteractiveLoopTests.CtrlC_OnEmptyPrompt_ExitsWithCodeZero` |
+| 5 | Malformed permission config produces startup error | ✅ Done | `ConfigTests.Load_MalformedProjectConfig_Throws_StartupError`, `Load_MalformedGlobalConfig_Throws_StartupError` |
+| 5 | `PI_NET_HOME` override for permissions | ✅ Done | `ConfigTests.GlobalConfigPath_RespectsPI_NET_HOME` (resolver picks the relocated global layer) |
+| 6 | Extension host compilation cache reuse | ✅ Done | `ExtensionHostTests` (DLL count unchanged on a second compile of the same source) |
+| 6 | Skill `disable-model-invocation` frontmatter | ✅ Done | `SkillFrontmatterTests.DisableModelInvocation_True_IsParsed`, `SkillRegistryTests.DisableModelInvocation_IsOmitted` |
+| 6 | Prompt template `${1:-default}` slice and unknown `$X` keep | ✅ Done | `TemplateTests`: defaults, `Slice_FromIndex`, `Slice_FromIndexWithLength`, `UnknownDollar_Sequence_LeftAsIs` |
+| 7a.2 | CLI keystroke capture during a turn | ✅ Done | `SteeringCaptureTests` (5: steer, follow-up, Ctrl+C, carry-over, scripted regression) |
 | 7b | `TokenEstimator` accuracy and image/token counting | ✅ Done | `TokenEstimatorTests` (6 tests) |
-| 7b | `ContextCompactor` auto-compact threshold & caching | ✅ Done | `ContextCompactorTests` (7 tests) |
+| 7b | `ContextCompactor` auto-compact threshold & caching | ✅ Done | `ContextCompactorTests` (8 tests) |
 | 7b | Manual `/compact` persists summary and rewinds watermark | ✅ Done | `InteractiveLoopTests` `/compact` (4 tests) |
 | 7b | Usage tracking `LastUsage/TotalUsage` accumulation | ✅ Done | `UsageTrackingTests` (3 tests) |
 | 7c | Thinking levels end-to-end (payloads, capture, `/thinking`, `--thinking`) | ✅ Done | `ThinkingPayloadTests` (16), `ThinkingTests` (3), 4 CLI tests |
@@ -391,6 +396,10 @@ integration tests. (Stage 7 is fully covered — its rows below are marked ✅ D
 | 7e | Image input (`@image` expansion, vision guard) | ✅ Done | 3 CLI image tests |
 | 7f | Export/import (JSONL round-trip, HTML, malformed files) | ✅ Done | `SessionExportTests` (6), 5 CLI tests |
 | 7g | Settings (global/project merge, `/settings`, `PI_NET_HOME`) | ✅ Done | `SettingsTests` (19) |
+
+Remaining gaps (tracked in [`TASKS.md`](../TASKS.md)): coverage measurement
+against the Stage 8 >80% target; 7e clipboard images; 7g settings hot-reload;
+Stage 6 network smoke tests.
 
 ## Stage 8 — Polish, Packaging & Release — [DONE] (verified locally)
 
@@ -461,11 +470,11 @@ pinet/
 │   ├── PiNet.Extensions/            # [Stage 6] extension/skill/prompt discovery
 │   ├── PiNet.Cli/                   # Console app entry point (incl. interactive layer)
 │   ├── PiNet.AgentCore.Tests/       # 52 tests
-│   ├── PiNet.Sessions.Tests/        # 26 tests
-│   ├── PiNet.Permissions.Tests/     # 47 tests
+│   ├── PiNet.Sessions.Tests/        # 27 tests
+│   ├── PiNet.Permissions.Tests/     # 49 tests
 │   ├── PiNet.Providers.Tests/       # 34 tests [spec 07 + 08 §7c]
 │   ├── PiNet.Extensions.Tests/      # 64 tests [Stage 6]
-│   └── PiNet.Cli.Tests/             # 148 tests
+│   └── PiNet.Cli.Tests/             # 154 tests
 ├── docs/                            # specs (01–08), ADRs, guides
 ├── .github/workflows/               # [Stage 8]
 ├── PiNet.slnx
@@ -504,6 +513,6 @@ reference `xunit` + `Microsoft.NET.Test.Sdk`.
 ---
 
 *Plan created: 2026-09-09*
-*Last updated: 2026-10-15 — Stage 7 verified (7a–7g) and Stage 8 packaging/release implemented and verified locally, 371 tests passing. Next: publish the first package to NuGet.org; see `STATUS.md`.*
+*Last updated: 2026-10-16 — 7a.2 in-flight keystroke capture implemented and verified (spec 08 §3.3); testing gap re-audit closed (380 tests passing). Next: publish the first package to NuGet.org; see `STATUS.md` and `TASKS.md`.*
 *Target: .NET 10 (preview → GA)*
 *Reference: https://github.com/earendil-works/pi*

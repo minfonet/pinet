@@ -108,4 +108,47 @@ public class ConfigTests
             Environment.SetEnvironmentVariable("PI_NET_HOME", original);
         }
     }
+
+    [Fact]
+    public async Task Load_MalformedProjectConfig_Throws_StartupError()
+    {
+        using var dirs = new TempDirs();
+        var original = Environment.GetEnvironmentVariable("PI_NET_HOME");
+        try
+        {
+            Environment.SetEnvironmentVariable("PI_NET_HOME", dirs.Outside);
+            var projectDir = Path.Combine(dirs.Cwd, ".pi");
+            Directory.CreateDirectory(projectDir);
+            await File.WriteAllTextAsync(Path.Combine(projectDir, "permissions.json"), "{ not json");
+
+            // BuildPermissionsAsync (CLI startup) loads through this API; a
+            // malformed file must abort startup, not be silently ignored.
+            var ex = await Assert.ThrowsAsync<PermissionConfigException>(
+                () => RulePermissionResolver.LoadAsync(dirs.Cwd));
+            Assert.Contains("invalid JSON", ex.Message);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("PI_NET_HOME", original);
+        }
+    }
+
+    [Fact]
+    public async Task Load_MalformedGlobalConfig_Throws_StartupError()
+    {
+        using var dirs = new TempDirs();
+        var original = Environment.GetEnvironmentVariable("PI_NET_HOME");
+        try
+        {
+            Environment.SetEnvironmentVariable("PI_NET_HOME", dirs.Cwd);
+            await File.WriteAllTextAsync(Path.Combine(dirs.Cwd, "permissions.json"), "{ not json");
+
+            await Assert.ThrowsAsync<PermissionConfigException>(
+                () => RulePermissionResolver.LoadAsync(dirs.Outside));
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("PI_NET_HOME", original);
+        }
+    }
 }

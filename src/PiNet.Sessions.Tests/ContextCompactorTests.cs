@@ -32,6 +32,23 @@ public sealed class ContextCompactorTests
     }
 
     [Fact]
+    public async Task AboveThreshold_AutoCompacts()
+    {
+        var runner = new ScriptedRunner().Enqueue(r => ScriptedRunner.Answer("SUMMARY: auto"));
+        var compactor = new ContextCompactor(
+            new SessionCompactor(runner, "p", "m"),
+            new CompactionSettings { ContextWindow = 100, Threshold = 0.5, PreserveRecentMessages = 3 });
+
+        // 40 messages are well above 50 estimated tokens for this tiny window.
+        var messages = ListOf(40);
+        var result = await compactor.TransformAsync(messages, "system", default);
+
+        Assert.True(compactor.HasSummary);
+        Assert.Equal(1, runner.GenerateCalls);
+        Assert.True(result.Count < messages.Count);
+    }
+
+    [Fact]
     public async Task ForceCompaction_RewritesPrefix_KeepsTail_OriginalUntouched()
     {
         var runner = new ScriptedRunner().Enqueue(r => ScriptedRunner.Answer("SUMMARY: early stuff"));

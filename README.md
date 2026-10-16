@@ -9,9 +9,9 @@ with **Spec-Driven Development** (spec first, then verify against the running CL
 
 | Item | State |
 |------|-------|
-| Stages | **1–8 implemented**; product features verified (specs 01–08); packaging/release verified locally, first NuGet.org push pending |
+| Stages | **1–8 implemented**; product features verified (specs 01–08, incl. 7a.2); packaging/release verified locally, first NuGet.org push pending |
 | Build | `dotnet build PiNet.slnx` — clean (0 warnings, 0 errors) |
-| Tests | **371 passing** (see verification commands below) |
+| Tests | **380 passing** (see verification commands below) |
 | Next | Publish the first package (`dotnet pack` + `dotnet nuget push`, or push a `v*` tag with `NUGET_API_KEY` set) |
 
 See [`STATUS.md`](STATUS.md), [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md)
@@ -56,7 +56,7 @@ dotnet run --project src/PiNet.Cli -- --provider openai --model gpt-4o -p "hello
 | 4 | Interactive loop | Zero-dependency TUI, line editor + history, slash commands, Ctrl+C semantics |
 | 5 | Permissions & tool security | Rule resolver (safety floor, deny-sticky), `/trust`, `--approve`, path globs |
 | 6 | **Extensions & Skills** | Extension host, skills, prompt templates, context files, package manager |
-| 7 | **Advanced Features** | Steering/follow-up, context compaction (`/compact`), thinking levels (`/thinking`), cross-provider handoff, `@image` input, `/export`+`/import`, settings |
+| 7 | **Advanced Features** | Steering/follow-up (incl. in-flight typing → steer/follow-up), context compaction (`/compact`), thinking levels (`/thinking`), cross-provider handoff, `@image` input, `/export`+`/import`, settings |
 | 8 | Packaging & Release | `dotnet tool` pack + install scripts, self-contained per-RID binaries, CI + release workflows, `pinet update --self` |
 
 Beyond the staged work, [spec 07](docs/spec/07-local-llm-providers.md) adds
@@ -224,6 +224,10 @@ or malformed file falls back to the built-ins with a warning. Full reference:
 
 ## Advanced features (Stage 7)
 
+- **Steering & follow-up** — while a turn is running, keep typing: Enter queues a
+  steering message for the next turn boundary (`(steering: …)`), Alt+Enter queues
+  a follow-up that starts another turn; Ctrl+C cancels the turn, and unsubmitted
+  text carries over to the next prompt.
 - **Thinking levels** — `/thinking Off|Minimal|Low|Medium|High|XHigh|Max` in the
   loop or `--thinking <level>` per run. Mapped to OpenAI `reasoning_effort` and
   Anthropic `thinking.budget_tokens`; thinking deltas render dimmed and are
@@ -269,7 +273,7 @@ $env:OPENAI_API_KEY = "sk-..."; .\scripts\smoke-stage6.ps1 -OpenAiModel gpt-4o
 
 ```bash
 dotnet build PiNet.slnx        # 0 warnings, 0 errors
-dotnet test PiNet.slnx         # 371/371 passing
+dotnet test PiNet.slnx         # 380/380 passing
 dotnet run --project src/PiNet.Cli -- --list-models
 dotnet run --project src/PiNet.Cli -- --provider faux --model faux-model -p "hi"
 ```
