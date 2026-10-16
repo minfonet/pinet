@@ -33,7 +33,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: nuget-package
+          name: tool-package
           path: artifacts/packages/*.nupkg
 
   self-contained:
@@ -75,10 +75,6 @@ jobs:
         with:
           path: artifacts
           merge-multiple: true
-
-      - name: Publish to NuGet
-        if: ${{ secrets.NUGET_API_KEY != '' }}
-        run: dotnet nuget push artifacts/*.nupkg --api-key "${{ secrets.NUGET_API_KEY }}" --source https://api.nuget.org/v3/index.json --skip-duplicate
 
       - name: Create GitHub release
         env:

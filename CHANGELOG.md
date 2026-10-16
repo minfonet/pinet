@@ -11,9 +11,10 @@ release-notes style view.
 ## [Unreleased]
 
 Nothing yet. The first release is `0.1.0` below; the package is packed and
-installed locally (tool + self-contained binaries verified), the NuGet.org
-publication is still pending. See “Deferred” at the bottom for documented items
-that will land in later releases.
+installed locally (tool + self-contained binaries verified). Pi.NET is
+**not published to NuGet.org** — releases are distributed as GitHub Release
+assets (per-RID binaries + the packed global-tool `.nupkg`). See “Deferred” at
+the bottom for documented items that will land in later releases.
 
 ## [0.1.0] — 2026-10-16
 
@@ -116,8 +117,20 @@ Initial complete implementation: stages 1–8 of
   guidance when not installed as a global tool).
 - CI workflow (build + test) and release workflow (tag `v*` → tests, pack with
   the tag version, self-contained `win-x64`/`linux-x64`/`osx-arm64` single-file
-  binaries, NuGet push when `NUGET_API_KEY` is set, GitHub release assets);
+  binaries, GitHub release assets: tool `.nupkg` + per-RID zips);
   `scripts/publish.ps1` for local per-RID publishes.
+- Distribution decision: **no NuGet.org publication** — install from the
+  packed `.nupkg` (local feed or GitHub Release asset) or use a per-RID
+  binary; `install.ps1`/`install.sh` now install from a local package feed.
+
+### Documentation
+
+- `docs/extensions.md` rewritten as a complete **creating Pi-style
+  extensions** guide: quickstart, host pipeline, API reference, examples,
+  testing, packaging, skills/templates/context files, Pi parity notes.
+- New `docs/testing-with-a-real-llm.md`: provider setup (OpenAI, Anthropic,
+  custom `models.json`), print/agent/interactive checks, sessions, the Stage 6
+  smoke script, a verification checklist and troubleshooting.
 
 ### Fixed
 
@@ -137,5 +150,4 @@ Documented and intentionally not part of 0.1.0:
 - 7g — settings hot-reload during a running session (restart picks changes up).
 - Stage 6 network smoke tests (`npm:`/`git:` installs, extension tool invoked by
   a real LLM).
-- First NuGet.org publication; SBOM/signing decisions (telemetry: none, per the
-  zero-dependency posture).
+- SBOM/signing decisions (telemetry: none, per the zero-dependency posture).

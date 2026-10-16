@@ -48,8 +48,9 @@ This folder contains all project documentation, written using the **Spec-Driven 
 | Doc | Topic |
 |-----|-------|
 | [permissions.md](permissions.md) | Permission rules, config files, `/trust`, `--approve`, container template |
-| [extensions.md](extensions.md) | Extensions, skills, prompt templates, context files, packages (`pinet install`) |
+| [extensions.md](extensions.md) | Creating Pi-style extensions (C# tools + commands), skills, prompt templates, context files, packages (`pinet install`) |
 | [local-llms.md](local-llms.md) | Local & custom LLM providers via `~/.pinet/models.json` (Ollama, LM Studio, vLLM, …) |
+| [testing-with-a-real-llm.md](testing-with-a-real-llm.md) | Testing against a real LLM: provider setup, smoke checks, sessions, troubleshooting |
 | [packaging.md](packaging.md) | Packaging & distribution (tool install, install scripts, CI) |
 
 ### Project records

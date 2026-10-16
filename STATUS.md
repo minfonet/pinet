@@ -10,7 +10,7 @@
 |------|-------|
 | Solution | `PiNet.slnx` — builds clean (0 warnings, 0 errors) |
 | Tests | **380 passing** (34 `PiNet.Providers.Tests` + 49 `PiNet.Permissions.Tests` + 52 `PiNet.AgentCore.Tests` + 27 `PiNet.Sessions.Tests` + 154 `PiNet.Cli.Tests` + 64 `PiNet.Extensions.Tests`), 0 failing |
-| Current stage | **Stage 8 — Packaging / CI / Release** — packaging + release workflow + `pinet update --self` implemented and verified locally; NuGet.org publication pending |
+| Current stage | **Stage 8 — Packaging / CI / Release** — packaging + release workflow + `pinet update --self` implemented and verified locally; NuGet.org publication intentionally skipped (distribution via GitHub Release assets + local pack) |
 | Stages complete | 1, 2, 3, 4, 5, 6 + spec 07 + spec 08 (incl. 7a.2; specs verified against the running CLI) |
 | Packaging | `dotnet pack` → `PiNet.0.1.0.nupkg` verified (tool install + run from a local feed); self-contained `win-x64` publish verified; CI + release workflows committed; `scripts/publish.ps1` for local per-RID publishes |
 
@@ -206,14 +206,15 @@ out of scope. Tests: 19 `SettingsTests`.
 
 ### Stage 8 — Packaging / CI / Release — 🔄 mostly done, verified locally
 Implemented: global-tool packaging (`PackageId=PiNet`, `AssemblyName=pinet`,
-README in package), install scripts, `pinet update --self`, CI workflow,
-**release workflow** (`v*` tags → tests + pack + self-contained
-`win-x64`/`linux-x64`/`osx-arm64` binaries + NuGet push when
-`NUGET_API_KEY` is set + GitHub release assets), `scripts/publish.ps1`,
-`docs/packaging.md`. Locally verified: pack → tool install from a local feed →
-run; `win-x64` self-contained `pinet.exe` → run; `update --self` failure path
-prints guidance. Pending: first NuGet.org publication (package not pushed yet),
-SBOM/signing decisions.
+README in package), install scripts (local package feed), `pinet update --self`,
+CI workflow, **release workflow** (`v*` tags → tests + pack + self-contained
+`win-x64`/`linux-x64`/`osx-arm64` binaries + GitHub release assets: tool
+`.nupkg` + per-RID zips), `scripts/publish.ps1`, `docs/packaging.md`. Locally
+verified: pack → tool install from a local feed → run; `win-x64`
+self-contained `pinet.exe` → run; `update --self` failure path prints guidance.
+Decision (2026-10-16): **no NuGet.org publication** — releases are distributed
+as GitHub Release assets and `dotnet pack` output. Remaining: configure the
+GitHub remote and cut the first tagged release; SBOM/signing decisions.
 
 ## Known issues / next steps
 
@@ -224,9 +225,10 @@ SBOM/signing decisions.
      changes).
 
 2. **Stage 8 — Packaging / CI / Release** — packaging and release automation
-   verified locally; remaining: push the first package to NuGet.org (needs an
-   account/API key), decide on SBOM/telemetry (currently none, per the
-   zero-dependency posture).
+   verified locally; remaining: configure the GitHub remote and cut the first
+   tagged release (NuGet.org publication intentionally skipped — Release
+   assets carry the binaries and the tool package), decide on SBOM/telemetry
+   (currently none, per the zero-dependency posture).
 
 3. **Deferred (from earlier stages)** — Stage 6 network smoke tests
    (`pinet install npm:`/`git:`, extension tool invoked by a real LLM); the

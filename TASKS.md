@@ -4,31 +4,29 @@
 > passing at analysis time; 380/380 after the follow-up work below).
 > Companion to [`STATUS.md`](STATUS.md) and [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md).
 
-## P0 — Release (requires the maintainer's accounts/credentials)
+## P0 — Release (requires the maintainer's accounts/actions)
 
-- [ ] **Publish the first package to NuGet.org**
-  - `dotnet pack src/PiNet.Cli/PiNet.Cli.csproj -c Release -o artifacts/packages`
-  - `dotnet nuget push artifacts/packages/PiNet.0.1.0.nupkg --source https://api.nuget.org/v3/index.json --api-key $NUGET_API_KEY`
-- [ ] **Configure the GitHub remote** (`git remote add origin …`), push `main`,
-  set the `NUGET_API_KEY` secret, and push the `v0.1.0` tag so `.github/workflows/release.yml`
-  runs (tests + pack + self-contained `win-x64`/`linux-x64`/`osx-arm64` binaries +
-  NuGet push + GitHub Release). Neither workflow has ever run: the repo is local-only
-  (no remote, no tags).
-- [ ] **Verify the published tool**: `dotnet tool install -g PiNet`, `pinet --help`,
-  `pinet -p "hello"`, `pinet update --self`.
+- [ ] **Configure the GitHub remote and cut the first release**
+  - `git remote add origin <repo-url>`, push `main`, then push the `v0.1.0` tag
+    so `.github/workflows/release.yml` runs (tests + pack + self-contained
+    `win-x64`/`linux-x64`/`osx-arm64` binaries + GitHub Release assets: tool
+    `.nupkg` + per-RID zips). No `NUGET_API_KEY` needed: **NuGet.org
+    publication is intentionally skipped**.
+  - Neither workflow has ever run: the repo is local-only (no remote, no tags).
+- [ ] **Verify the release artifacts**: `dotnet tool install -g PiNet
+  --add-source <dir-with-nupkg>` (or `install.ps1` / `install.sh`), `pinet --help`,
+  `pinet -p "hello"`, `pinet update --self`; download one per-RID zip and run it.
 - [ ] **Decide SBOM/signing** (document "none" per the zero-dependency posture, or add
   SBOM generation to the release workflow).
 
 ## P1 — Deferred features
 
-- [ ] **7a.2 — in-flight keystroke capture** (Enter → steer, Alt+Enter → follow-up
-  during a running turn). Implemented in `InteractiveLoop` with an interactive-only
-  input pump; spec 08 §3.3 carries the acceptance criteria and tests.
 - [ ] **7e — clipboard/paste image input** (platform-dependent; optional per spec).
 - [ ] **7g — settings hot-reload** during a running session (restart picks changes up).
 - [ ] **Stage 6 network smoke tests**: `scripts/smoke-stage6.ps1` against a real
   registry (`pinet install npm:`/`git:`) and a real LLM invoking an extension tool
-  (needs `OPENAI_API_KEY`/`ANTHROPIC_API_KEY`).
+  (needs `OPENAI_API_KEY`/`ANTHROPIC_API_KEY`; see
+  [`docs/testing-with-a-real-llm.md`](docs/testing-with-a-real-llm.md)).
 
 ## P2 — Quality & documentation
 
@@ -42,8 +40,8 @@
   `PI_NET_HOME` for permissions).
 - [ ] **Coverage measurement** for AgentCore/Sessions/Providers (Stage 8 target >80%);
   either measure with a collector or adjust the criterion in the plan.
-- [ ] **Post-release doc pass**: README/STATUS/CHANGELOG/spec 00 "published" state +
-  NuGet link.
+- [ ] **Post-release doc pass**: once the GitHub remote/release exists, link the
+  release page from README/STATUS and confirm the install paths there.
 
 ## Done (2026-10-16)
 
@@ -60,3 +58,16 @@
   evidence per row).
 - [x] Doc/test-count consistency pass (README, STATUS, CHANGELOG, spec 08,
   plan): 380 tests passing.
+- [x] **NuGet.org publication decision applied**: no publication — README,
+  STATUS, CHANGELOG, plan, spec 00, `docs/packaging.md`, implementation notes,
+  `release.yml` (NuGet push step removed) and the install scripts (local feed)
+  updated; the tool `.nupkg` ships as a GitHub Release asset.
+- [x] **New/rewritten guides (English)**:
+  [`docs/extensions.md`](docs/extensions.md) — complete *creating Pi-style
+  extensions* guide (host pipeline, API reference, examples, testing,
+  packaging, skills/templates/context files, Pi parity);
+  [`docs/testing-with-a-real-llm.md`](docs/testing-with-a-real-llm.md) —
+  provider setup, print/agent/interactive checks, sessions, smoke script,
+  checklist and troubleshooting.
+- [x] **Graphify graph regenerated** for the current HEAD (`graph/`, gitignored
+  local artifact; counts in `graph/GRAPH_REPORT.md`).

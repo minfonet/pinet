@@ -6,7 +6,9 @@ Delivered:
   `PackAsTool` + `ToolCommandName=pinet`, `PackageId=PiNet`, `Version=0.1.0`,
   `AssemblyName=pinet` (self-contained binaries are called `pinet`/`pinet.exe`),
   description/tags and the repo README packed as `PackageReadmeFile`.
-- **Install scripts**: `install.ps1` / `install.sh` (`dotnet tool install -g PiNet`).
+- **Install scripts**: `install.ps1` / `install.sh` (pack from source when
+  needed, then `dotnet tool install -g PiNet --add-source <feed>`; an existing
+  feed directory can be passed as the first argument).
 - **Self-update**: `pinet update --self` delegates to `dotnet tool update -g PiNet`
   (`PackageCommands.SelfUpdateAsync`), streaming dotnet's output and printing
   guidance when PiNet is not a global tool. `pinet update [name]` still updates
@@ -14,9 +16,9 @@ Delivered:
 - **CI** (`.github/workflows/ci.yml`): restore + build + test on push/PR (ubuntu).
 - **Release** (`.github/workflows/release.yml`): on `v*` tags (or manual):
   tests, packs the tool with the tag as version, publishes self-contained
-  single-file binaries for `win-x64`/`linux-x64`/`osx-arm64` (zipped), pushes to
-  NuGet.org when `NUGET_API_KEY` is set, and creates the GitHub release with the
-  `.nupkg` + per-RID `.zip` assets via `gh release create`.
+  single-file binaries for `win-x64`/`linux-x64`/`osx-arm64` (zipped), and
+  creates the GitHub release with the `.nupkg` + per-RID `.zip` assets via
+  `gh release create`. No NuGet.org push (decision 2026-10-16).
 - **Local publish helper**: `scripts/publish.ps1` (`-Rids`, `-Version`).
 - **Docs**: `docs/packaging.md` (build/pack/install/update/self-contained/
   release + runtime config layout).
@@ -36,6 +38,7 @@ Bug fixed along the way: `Program` sliced the args before dispatching to
 Regression covered by `PackageManagerCliTests.Program_DispatchesPackageSubcommands_WithFullArgs`
 (`InternalsVisibleTo PiNet.Cli.Tests` added; `Program.RunAsync` is now internal).
 
-Not done (future): actual NuGet.org publication (needs the package to be pushed
-once), SBOM generation, telemetry (decided against for now: zero-dependency
-posture), signing.
+Decided (2026-10-16): **no NuGet.org publication** — distribution is via
+GitHub Release assets (per-RID zips + tool `.nupkg`) and local packs.
+Still open (future): SBOM generation, telemetry (decided against for now:
+zero-dependency posture), signing.

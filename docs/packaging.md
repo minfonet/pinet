@@ -1,9 +1,11 @@
 # Packaging & Release
 
-Pi.NET ships three ways:
+Pi.NET ships three ways (there is **no NuGet.org publication**):
 
-1. **Global .NET tool** (`dotnet tool install -g PiNet`) — the default install.
-2. **Self-contained single-file binaries** per RID (no .NET runtime needed).
+1. **Global .NET tool** installed from a local package feed (`dotnet pack` +
+   `dotnet tool install -g PiNet --add-source …`) — the default install.
+2. **Self-contained single-file binaries** per RID (no .NET runtime needed),
+   attached to GitHub Releases.
 3. **From source** (`dotnet build` / `dotnet run`).
 
 ## Build
@@ -25,22 +27,31 @@ Package metadata lives in `src/PiNet.Cli/PiNet.Cli.csproj` (`PackageId=PiNet`,
 
 ### Install / update
 
+The install scripts pack Pi.NET from source when needed and install from a
+local feed. Pass an existing feed directory (for example one holding the
+`.nupkg` downloaded from a GitHub Release) to skip the pack:
+
 ```powershell
-.\install.ps1                       # Windows
+.\install.ps1                       # Windows (packs from source)
+.\install.ps1 C:\path\to\feed       # Windows (existing .nupkg directory)
 ```
 ```bash
-./install.sh                        # Linux / macOS
+./install.sh                        # Linux / macOS (packs from source)
+./install.sh /path/to/feed          # Linux / macOS (existing .nupkg directory)
 ```
 
 or directly:
 
 ```bash
-dotnet tool install -g PiNet
-dotnet tool update  -g PiNet        # what `pinet update --self` runs
+dotnet pack src/PiNet.Cli/PiNet.Cli.csproj -c Release -o artifacts/packages
+dotnet tool install -g PiNet --add-source artifacts/packages
+dotnet tool update  -g PiNet --add-source artifacts/packages
 ```
 
 `pinet update --self` delegates to `dotnet tool update -g PiNet` and prints
-guidance when PiNet is not installed as a global tool. (`pinet update [name]`
+guidance when PiNet is not installed as a global tool. When you installed from
+a local feed, run the update with `--add-source <feed>` yourself or re-run the
+install script after the new package is in the feed. (`pinet update [name]`
 still updates *extension packages*.)
 
 ## Self-contained binaries
@@ -68,9 +79,8 @@ dotnet publish src/PiNet.Cli/PiNet.Cli.csproj -c Release \
   1. runs the test suite and packs the global tool (version from the tag),
   2. publishes self-contained binaries for `win-x64`, `linux-x64`, `osx-arm64`
      and zips them,
-  3. pushes to NuGet.org **when `NUGET_API_KEY` is set** (skipped otherwise),
-  4. creates the GitHub release with the `.nupkg` and per-RID `.zip` assets
-     (`gh release create`, release notes auto-generated).
+  3. creates the GitHub release with the `.nupkg` and per-RID `.zip` assets
+     (`gh release create`, release notes auto-generated) — no NuGet.org push.
 
 ### Cutting a release
 

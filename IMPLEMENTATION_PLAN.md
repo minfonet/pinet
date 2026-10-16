@@ -39,7 +39,7 @@ The original Pi project (TypeScript/Node.js) is structured as a monorepo with th
 | 5 — Permissions & Tool Security | [DONE] verified (spec `docs/spec/05`) |
 | 6 — Extensions & Skills | [DONE] verified (spec `docs/spec/06`) |
 | 7 — Advanced Features | [DONE] verified (spec `docs/spec/08`, incl. 7a.2) |
-| 8 — Polish, Packaging & Release | [DONE] packaging + release workflow + `pinet update --self` verified locally; first NuGet.org push pending |
+| 8 — Polish, Packaging & Release | [DONE] packaging + release workflow + `pinet update --self` verified locally; distribution via GitHub Release assets (NuGet.org publication intentionally skipped) |
 
 Verified baseline: `dotnet build PiNet.slnx` clean (0 warnings / 0 errors);
 `dotnet test PiNet.slnx` — 380 passing (34 Providers + 49 Permissions + 52
@@ -47,9 +47,11 @@ AgentCore + 27 Sessions + 154 Cli + 64 Extensions).
 
 ### Recommended implementation order (remaining work)
 
-1. **Publish the first package to NuGet.org** — `dotnet pack` + `dotnet nuget
-   push` (or push a `v*` tag once `NUGET_API_KEY` is configured); everything
-   else in the release workflow is ready and verified locally.
+1. **Cut the first tagged release** — configure the GitHub remote, push `main`
+   and a `v0.1.0` tag so the release workflow builds the per-RID binaries and
+   attaches them plus the tool `.nupkg` to the GitHub Release; NuGet.org
+   publication is intentionally skipped (install from a local feed or use a
+   per-RID binary).
 2. **Deferred** — 7e clipboard images; 7g settings hot-reload; network smoke
    tests (Stage 6 `install npm:`/`git:` + extension tool invoked by a real LLM);
    SBOM/signing decisions. (7a.2 in-flight keystroke capture is done:
@@ -412,18 +414,19 @@ Stage 6 network smoke tests.
 - `pinet update --self` (delegates to `dotnet tool update -g PiNet`) — ✅ done
 - Build & CI: `.github/workflows/ci.yml` builds and tests — ✅ done
 - Release workflow (`.github/workflows/release.yml`): tag → tests + pack +
-  self-contained per-RID binaries + NuGet push (guarded by `NUGET_API_KEY`) +
-  GitHub release assets — ✅ done, verified locally (pack → local feed →
-  tool install → run; `win-x64` self-contained → run)
+  self-contained per-RID binaries + GitHub release assets (tool `.nupkg` +
+  per-RID zips) — ✅ done, verified locally (pack → local feed → tool install →
+  run; `win-x64` self-contained → run)
 - Documentation: `docs/packaging.md` (build/pack/install/self-contained/release)
   — ✅ done
-- Remaining: first NuGet.org publication; SBOM/signing decisions;
+- Remaining: GitHub remote + first tagged release; SBOM/signing decisions;
   telemetry decided against (zero-dependency posture)
 
 ### Full scope
 
 - CLI packaging:
-  - `dotnet tool` packaging (`dotnet pack` + NuGet publishing)
+  - `dotnet tool` packaging (`dotnet pack`; install from a local feed or the
+    `.nupkg` attached to a GitHub Release — no NuGet.org publication)
   - Self-contained single-file executables per RID (`dotnet publish -r win-x64`, `linux-x64`, `osx-arm64`)
   - Install script (`install.sh` / `install.ps1`)
 - Build & CI:
@@ -449,7 +452,8 @@ Stage 6 network smoke tests.
 
 ### Acceptance Criteria
 
-- `dotnet tool install -g PiNet` works and `pinet` is available on PATH
+- `dotnet tool install -g PiNet --add-source <feed>` works (local pack or the
+  GitHub Release `.nupkg`) and `pinet` is available on PATH
 - `pinet -p "Hello"` works on Windows, Linux, and macOS
 - All tests pass in CI
 - README has working quick-start instructions
@@ -513,6 +517,6 @@ reference `xunit` + `Microsoft.NET.Test.Sdk`.
 ---
 
 *Plan created: 2026-09-09*
-*Last updated: 2026-10-16 — 7a.2 in-flight keystroke capture implemented and verified (spec 08 §3.3); testing gap re-audit closed (380 tests passing). Next: publish the first package to NuGet.org; see `STATUS.md` and `TASKS.md`.*
+*Last updated: 2026-10-16 — 7a.2 in-flight keystroke capture implemented and verified (spec 08 §3.3); testing gap re-audit closed (380 tests passing); real-LLM testing guide + Pi-style extension guide added; NuGet.org publication intentionally skipped. Next: GitHub remote + first tagged release; see `STATUS.md` and `TASKS.md`.*
 *Target: .NET 10 (preview → GA)*
 *Reference: https://github.com/earendil-works/pi*

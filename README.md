@@ -9,10 +9,10 @@ with **Spec-Driven Development** (spec first, then verify against the running CL
 
 | Item | State |
 |------|-------|
-| Stages | **1–8 implemented**; product features verified (specs 01–08, incl. 7a.2); packaging/release verified locally, first NuGet.org push pending |
+| Stages | **1–8 implemented**; product features verified (specs 01–08, incl. 7a.2); packaging/release verified locally |
 | Build | `dotnet build PiNet.slnx` — clean (0 warnings, 0 errors) |
 | Tests | **380 passing** (see verification commands below) |
-| Next | Publish the first package (`dotnet pack` + `dotnet nuget push`, or push a `v*` tag with `NUGET_API_KEY` set) |
+| Next | Configure the GitHub remote and cut the first `v0.1.0` release (per-RID binaries + tool package as Release assets; NuGet.org publication intentionally skipped) |
 
 See [`STATUS.md`](STATUS.md), [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md)
 and [`CHANGELOG.md`](CHANGELOG.md) for the full stage-by-stage record.
@@ -32,9 +32,15 @@ dotnet run --project src/PiNet.Cli -- --list-models
 dotnet run --project src/PiNet.Cli -- -i
 ```
 
-### Install as global tool
+### Install as a global tool (from source)
+
+Pi.NET is **not published to NuGet.org**. Pack it locally and install from that
+feed (or use a per-RID binary from GitHub Releases / `install.ps1` /
+`install.sh`):
+
 ```bash
-dotnet tool install -g PiNet
+dotnet pack src/PiNet.Cli/PiNet.Cli.csproj -c Release -o artifacts/packages
+dotnet tool install -g PiNet --add-source artifacts/packages
 pinet --help
 ```
 
@@ -252,7 +258,8 @@ or malformed file falls back to the built-ins with a warning. Full reference:
 ## Manual smoke tests
 
 [`scripts/smoke-stage6.ps1`](scripts/smoke-stage6.ps1) runs the Stage 6 wiring
-end-to-end on a networked machine:
+end-to-end on a networked machine (full guide:
+[`docs/testing-with-a-real-llm.md`](docs/testing-with-a-real-llm.md)):
 
 1. builds the solution (`-SkipBuild` to skip);
 2. `pinet install npm:<pkg>` against a real registry;
@@ -281,7 +288,8 @@ dotnet run --project src/PiNet.Cli -- --provider faux --model faux-model -p "hi"
 ## Documentation
 
 - [`docs/README.md`](docs/README.md) — index of specs and guides (Spec-Driven Development)
-- [`docs/extensions.md`](docs/extensions.md) — extensions, skills, templates, packages reference
+- [`docs/extensions.md`](docs/extensions.md) — creating Pi-style extensions: API, examples, skills, templates, packages
+- [`docs/testing-with-a-real-llm.md`](docs/testing-with-a-real-llm.md) — testing Pi.NET against a real LLM: keys, smoke checks, troubleshooting
 - [`docs/local-llms.md`](docs/local-llms.md) — local & custom LLM providers (`~/.pinet/models.json`)
 - [`docs/permissions.md`](docs/permissions.md) — permission rules, `/trust`, `--approve`, sandbox template
 - [`docs/spec/`](docs/spec/) — per-stage specifications with verification logs
