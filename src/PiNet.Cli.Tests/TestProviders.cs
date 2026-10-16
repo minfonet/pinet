@@ -116,6 +116,63 @@ public static class ToolCallScript
 }
 
 /// <summary>
+/// IChatProvider whose first call signals <see cref="Started"/> and then waits
+/// for <see cref="ReleaseFirstCall"/> before answering; later calls answer
+/// immediately. Gives 7a.2 tests a deterministic window with a turn in flight.
+/// </summary>
+public sealed class GatedProvider : IChatProvider
+{
+    private readonly TaskCompletionSource _started = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly TaskCompletionSource _release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly List<ChatRequest> _requests = [];
+    private int _streamCalls;
+
+    public GatedProvider(string id = "gate")
+    {
+        Id = id;
+        Models =
+        [
+            new ModelDefinition
+            {
+                Provider = id,
+                Id = $"{id}-model",
+                Name = $"{id} model",
+                ContextWindow = 1000
+            }
+        ];
+    }
+
+    public Task Started => _started.Task;
+    public void ReleaseFirstCall() => _release.TrySetResult();
+    public string Id { get; }
+    public string Name => "Gated test provider";
+    public IReadOnlyList<ModelDefinition> Models { get; }
+    public ICredentialResolver Credentials { get; } = ScriptedProvider.NoCredentials.Instance;
+
+    public int StreamCalls => Volatile.Read(ref _streamCalls);
+
+    public IReadOnlyList<ChatRequest> Requests
+    {
+        get { lock (_requests) return _requests.ToArray(); }
+    }
+
+    public async IAsyncEnumerable<StreamEvent> StreamAsync(ChatRequest request, AuthInfo auth)
+    {
+        var call = Interlocked.Increment(ref _streamCalls);
+        lock (_requests)
+            _requests.Add(request);
+        _started.TrySetResult();
+        if (call == 1)
+            await _release.Task.WaitAsync(request.CancellationToken);
+
+        var reply = $"reply {call}";
+        foreach (var c in reply)
+            yield return new TextDelta(c.ToString());
+        yield return new StreamEnd("end_turn", new Usage(1, 2, 0, 0, new Cost(0, 0, 0, 0)), ChatMessage.Assistant(reply));
+    }
+}
+
+/// <summary>
 /// IChatProvider that signals when streaming starts and then hangs until the
 /// request cancellation token fires (used for Ctrl+C cancel tests).
 /// </summary>

@@ -1,6 +1,6 @@
 # Specification 08 — Stage 7: Advanced Features
 
-- **Spec status:** Verified (2026-10-15); 7a.2 (CLI capture during a turn) deferred
+- **Spec status:** Verified (2026-10-16); all sub-stages complete (7a.2 included)
 - **Author:** Pi.NET
 - **Written before implementation:** yes (SDD)
 - **Consumes:** `Agent` / `AgentState` / `AgentEvent` (SR-02), `SessionManager` / `SessionCompactor` / `SessionJson` (SR-03), `IModelRunner` / `ChatRequest` / `StreamEvent` / `ModelDefinition` (SR-01), interactive loop + slash commands (SR-04), `~/.pinet` config resolution (SR-05/06/07)
@@ -15,7 +15,7 @@ independently:
 
 | Sub-stage | Feature | Status |
 |-----------|---------|--------|
-| 7a | Steering & follow-up | Verified (agent core); CLI capture 7a.2 deferred |
+| 7a | Steering & follow-up | Verified (agent core + 7a.2 CLI capture) |
 | 7b | Context compaction (auto + `/compact`) | Verified |
 | 7c | Reasoning / thinking levels | Verified (2026-10-15) |
 | 7d | Cross-provider handoff | Verified (2026-10-15) |
@@ -43,8 +43,7 @@ Out of scope (explicit divergences / later stages):
 
 ## 3. Sub-stage 7a — Steering & follow-up
 
-- **Status:** Verified (agent core, 2026-09-21); CLI capture during a turn (7a.2)
-  deferred.
+- **Status:** Verified (agent core + CLI capture, 2026-10-16); see §3.3 and §11.
 
 **Goal.** Let a user (or a host) inject messages into a running agent without
 aborting it, matching Pi's steering/follow-up model.
@@ -104,13 +103,42 @@ public int PendingFollowUp { get; }
 - **SR-07.08** — Existing behavior is unchanged when no messages are queued: the
   turn sequence and emitted events for a plain run are identical to Stage 2.
 
-### 3.3 Deferred within 7a
+### 3.3 CLI capture during a turn (7a.2)
 
-- **7a.2 — CLI capture during a turn.** Reading keystrokes while a turn is in
-  flight (Enter → steer, Alt+Enter → follow-up) requires the interactive loop to
-  pump input concurrently with `TurnRunner.RunAsync`. This is deferred to a
-  follow-up increment and will be specified as its own acceptance criteria when
-  implemented; the agent-level capability above is the prerequisite.
+- **Status:** Verified (2026-10-16, see §11).
+
+While a turn is in flight, the interactive loop pumps input concurrently with
+`TurnRunner.RunAsync` when the console is an interactive terminal
+(`IConsoleInput.Interactive`); scripted/redirected input keeps its sequential
+semantics.
+
+- **SR-07a2.01** — Typing a line and pressing Enter during a turn enqueues it
+  via `Agent.Steer`; it is delivered at the next turn boundary per §3.2 and
+  acknowledged with a dim `(steering: <text>)` line.
+- **SR-07a2.02** — Alt+Enter enqueues via `Agent.FollowUp` (dim
+  `(follow-up: <text>)` acknowledgment); a follow-up queued during the final
+  turn of a run starts another turn.
+- **SR-07a2.03** — Ctrl+C during the pump cancels the in-flight turn (same
+  semantics as the existing cancel path); an empty Enter is ignored.
+- **SR-07a2.04** — Text typed but not submitted when the turn ends is placed in
+  the editor buffer for the next prompt (never sent implicitly).
+- **SR-07a2.05** — The pump pauses while the console permission prompt owns the
+  input (`InputArbiter`), so it cannot steal the prompt's answer.
+- **SR-07a2.06** — With non-interactive input, behavior is unchanged
+  (regression): no keystroke is captured between turns.
+
+#### Acceptance criteria (7a.2)
+
+- **AC7a2.1** —
+  `SteeringCaptureTests.EnterDuringTurn_EnqueuesSteering_DeliveredAtNextTurnBoundary`.
+- **AC7a2.2** —
+  `SteeringCaptureTests.AltEnterDuringTurn_EnqueuesFollowUp_StartingAnotherTurn`.
+- **AC7a2.3** —
+  `SteeringCaptureTests.CtrlCDuringTurn_CancelsTheTurn_BackToPrompt`.
+- **AC7a2.4** —
+  `SteeringCaptureTests.UnsubmittedTextDuringTurn_CarriesOverToTheNextPrompt`.
+- **SR-07a2.06** —
+  `SteeringCaptureTests.ScriptedMode_DoesNotStealKeys_BetweenTurns`.
 
 ### 3.4 Acceptance criteria (7a)
 
@@ -341,6 +369,8 @@ winning; `/settings` shows effective values; malformed file warns and falls back
 - **7a:** `PiNet.AgentCore.Tests` — steering at turn boundaries, `OneAtATime` vs
   `All`, follow-up extra turn, injected-message events, queue counters, thread
   safety, no-queue regression. Uses a scripted `IModelRunner` (existing pattern).
+  `PiNet.Cli.Tests` — 7a.2 in-flight capture (steer/follow-up/cancel/carry-over)
+  against a gated provider.
 - **7b:** `PiNet.AgentCore.Tests` + `PiNet.Sessions.Tests` — threshold trigger,
   summary replacement, JSONL history preserved, `/compact` dispatch
   (`PiNet.Cli.Tests`).
@@ -353,11 +383,12 @@ winning; `/settings` shows effective values; malformed file warns and falls back
 
 ## 11. Verification log
 
-- **Status:** COMPLETE (2026-10-15) — 7a–7g verified; only the deferred items
-  listed under 7a.2 and 7e (clipboard images) remain.
+- **Status:** COMPLETE (2026-10-16) — 7a–7g verified, including 7a.2 (CLI
+  capture during a turn); only the optional clipboard image input (7e) remains
+  out of scope.
 - **Test counts** in the entries below are the suite size *at each verification
-  time* (historically accurate). The final suite after Stage 8 is **371 tests**
-  (Cli 148); see [`STATUS.md`](../../STATUS.md) and
+  time* (historically accurate). The final suite after 7a.2 is **380 tests**
+  (Cli 154); see [`STATUS.md`](../../STATUS.md) and
   [`CHANGELOG.md`](../../CHANGELOG.md).
 
 ### 7a — Steering & follow-up (agent core)
@@ -400,9 +431,43 @@ Implemented as specified. Verification summary:
   `InjectQueuedAsync`, turn-boundary drain in `RunAsync`),
   `src/PiNet.AgentCore/AgentState.cs` (`QueueMode`, `SteeringMode`,
   `FollowUpMode`).
-- **Deferred (7a.2):** CLI keystroke capture during an in-flight turn
-  (Enter → steer, Alt+Enter → follow-up) still needs the interactive loop to
-  pump input concurrently with `TurnRunner.RunAsync`; tracked in §3.3.
+- **7a.2 (CLI capture):** originally deferred; implemented and verified
+  2026-10-16 — see the dedicated entry below.
+
+### 7a.2 — CLI capture during a turn (interactive loop)
+
+- **Status:** DONE (2026-10-16)
+
+Implemented per §3.3. Verification summary:
+
+- **Build:** `dotnet build PiNet.slnx` → 0 warnings, 0 errors.
+- **Tests:** `dotnet test PiNet.slnx` → 380 passed, 0 failed (Cli 154, up from
+  148; Permissions 49, up from 47 — the extra two cover the malformed
+  permission-config startup path; Sessions 27, up from 26 — above-threshold
+  auto-compaction; the other projects unchanged).
+- **AC coverage (`src/PiNet.Cli.Tests/SteeringCaptureTests.cs`):**
+  - AC7a2.1 — `EnterDuringTurn_EnqueuesSteering_DeliveredAtNextTurnBoundary`
+    (a gated provider holds the first call; the steering message is absent from
+    `Requests[0]`, present in `Requests[1]`; `(steering: …)` acknowledged).
+  - AC7a2.2 — `AltEnterDuringTurn_EnqueuesFollowUp_StartingAnotherTurn`
+    (the follow-up starts another turn; the message reaches `Requests[1]`).
+  - AC7a2.3 — `CtrlCDuringTurn_CancelsTheTurn_BackToPrompt` (`(cancelled)`,
+    loop returns to the prompt).
+  - AC7a2.4 — `UnsubmittedTextDuringTurn_CarriesOverToTheNextPrompt` (the
+    partial text appears at the next prompt and was never sent).
+  - SR-07a2.06 — `ScriptedMode_DoesNotStealKeys_BetweenTurns` (non-interactive
+    input keeps its sequential semantics; regression).
+- **Code added:** `src/PiNet.Cli/Interact/InputArbiter.cs`.
+- **Code modified:** `IConsoleInput` (`Interactive`, `KeyAvailable`;
+  `ConsoleInput` and the test `ScriptedInput` implement them),
+  `InteractiveLoop` (`PumpTurnInputAsync`, pump lifecycle in `RunTurnAsync`,
+  unsubmitted-text carry-over), `ConsolePermissionPrompt` (pauses the pump via
+  the arbiter while it reads), `Program.InteractiveModeAsync` (creates and wires
+  the arbiter).
+- **Divergences from spec (intentional):** typed characters are not echoed live
+  while the model streams (the dim acknowledgment on Enter is the feedback);
+  unsubmitted text is carried into the next prompt instead of being discarded;
+  the pump only runs for interactive input (see SR-07a2.06).
 
 ### 7b — Context compaction (auto + `/compact`)
 

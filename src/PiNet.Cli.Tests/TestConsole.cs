@@ -27,6 +27,9 @@ public static class Keys
     public static ConsoleKeyInfo Ctrl(ConsoleKey key) =>
         Key(key, ConsoleModifiers.Control);
 
+    public static ConsoleKeyInfo Alt(ConsoleKey key) =>
+        Key(key, ConsoleModifiers.Alt);
+
     public static ConsoleKeyInfo Enter => Key(ConsoleKey.Enter);
     public static ConsoleKeyInfo CtrlC => Ctrl(ConsoleKey.C);
     public static ConsoleKeyInfo Up => Key(ConsoleKey.UpArrow);
@@ -36,34 +39,89 @@ public static class Keys
 public sealed class ScriptedInput : IConsoleInput
 {
     private readonly Queue<ConsoleKeyInfo> _keys;
-    public ScriptedInput(IEnumerable<ConsoleKeyInfo> keys) => _keys = new(keys);
-    public int Pending => _keys.Count;
-    public ConsoleKeyInfo? ReadKey() => _keys.Count > 0 ? _keys.Dequeue() : null;
+    private readonly object _gate = new();
+
+    /// <param name="interactive">
+    /// True models a live terminal where keystrokes can arrive mid-turn
+    /// (enables the 7a.2 pump); the default keeps sequential semantics.
+    /// </param>
+    public ScriptedInput(IEnumerable<ConsoleKeyInfo> keys, bool interactive = false)
+    {
+        _keys = new(keys);
+        Interactive = interactive;
+    }
+
+    public bool Interactive { get; }
+
+    public int Pending
+    {
+        get { lock (_gate) return _keys.Count; }
+    }
+
+    public bool KeyAvailable
+    {
+        get { lock (_gate) return _keys.Count > 0; }
+    }
+
+    public ConsoleKeyInfo? ReadKey()
+    {
+        lock (_gate)
+            return _keys.Count > 0 ? _keys.Dequeue() : null;
+    }
+
+    /// <summary>Appends keys while the loop is running (mid-turn input, 7a.2).</summary>
+    public void Push(params ConsoleKeyInfo[] keys)
+    {
+        lock (_gate)
+            foreach (var key in keys)
+                _keys.Enqueue(key);
+    }
 }
 
 public sealed class CapturingOutput : IConsoleOutput
 {
     public sealed record Emitted(string Text, ConsoleColor? Color);
+    public sealed record EditorLine(string Prompt, string Buffer, int Caret);
     public List<Emitted> Writen { get; } = [];
+    public List<EditorLine> EditorLines { get; } = [];
     private string _pending = string.Empty;
 
     public void Write(string text, ConsoleColor? color = null)
     {
-        _pending += text;
-        Writen.Add(new Emitted(text, color));
+        lock (Writen)
+        {
+            _pending += text;
+            Writen.Add(new Emitted(text, color));
+        }
     }
 
     public void WriteLine(string text = "", ConsoleColor? color = null) => Write(text + "\n", color);
 
-    public void RenderEditorLine(string prompt, string buffer, int caret) { }
+    public void RenderEditorLine(string prompt, string buffer, int caret)
+    {
+        lock (Writen)
+            EditorLines.Add(new EditorLine(prompt, buffer, caret));
+    }
 
-    public string All => string.Join(string.Empty, Writen.Select(w => w.Text));
+    public string All
+    {
+        get { lock (Writen) return string.Join(string.Empty, Writen.Select(w => w.Text)); }
+    }
 
-    public IEnumerable<string> RedLines =>
-        Writen.Where(w => w.Color == ConsoleColor.Red).Select(w => w.Text);
+    public IReadOnlyList<EditorLine> EditorLinesSnapshot
+    {
+        get { lock (Writen) return EditorLines.ToArray(); }
+    }
 
-    public IEnumerable<string> YellowLines =>
-        Writen.Where(w => w.Color == ConsoleColor.Yellow).Select(w => w.Text);
+    public IEnumerable<string> RedLines
+    {
+        get { lock (Writen) return Writen.Where(w => w.Color == ConsoleColor.Red).Select(w => w.Text).ToArray(); }
+    }
+
+    public IEnumerable<string> YellowLines
+    {
+        get { lock (Writen) return Writen.Where(w => w.Color == ConsoleColor.Yellow).Select(w => w.Text).ToArray(); }
+    }
 }
 
 /// <summary>Provider whose first generation never completes until cancelled.</summary>

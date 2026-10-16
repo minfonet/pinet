@@ -293,7 +293,8 @@ internal static class Program
         }
 
         using var cts = new CancellationTokenSource();
-        var (resolver, permissionPrompt) = await BuildPermissionsAsync(approve, noApprove, interactive: true, cts.Token);
+        var inputArbiter = new InputArbiter();
+        var (resolver, permissionPrompt) = await BuildPermissionsAsync(approve, noApprove, interactive: true, cts.Token, inputArbiter);
         var setup = await CliEnvironment.LoadAsync(Environment.CurrentDirectory, noExtensions, noSkills, noTemplates, cts.Token);
         PrintWarnings(setup);
         var loop = new InteractiveLoop(
@@ -327,7 +328,8 @@ internal static class Program
             compactThreshold: compactThreshold,
             compactPreserveRecent: compactPreserve,
             settings: settings,
-            thinkingLevel: thinkingLevel);
+            thinkingLevel: thinkingLevel,
+            inputArbiter: inputArbiter);
 
         return await loop.RunAsync(cts.Token);
     }
@@ -343,7 +345,7 @@ internal static class Program
     /// --approve auto-approves; non-interactive stdin falls back to deny-all.
     /// </summary>
     private static async Task<(RulePermissionResolver, IPermissionPrompt)> BuildPermissionsAsync(
-        bool approve, bool noApprove, bool interactive, CancellationToken ct)
+        bool approve, bool noApprove, bool interactive, CancellationToken ct, InputArbiter? arbiter = null)
     {
         var resolver = await RulePermissionResolver.LoadAsync(Environment.CurrentDirectory, ct);
         if (noApprove)
@@ -352,7 +354,7 @@ internal static class Program
         IPermissionPrompt prompt = approve
             ? new AutoApprovePrompt()
             : interactive
-                ? new ConsolePermissionPrompt(new ConsoleInput(), new ConsoleOutput())
+                ? new ConsolePermissionPrompt(new ConsoleInput(), new ConsoleOutput(), arbiter)
                 : new DenyAllPrompt(Console.Error);
         return (resolver, prompt);
     }

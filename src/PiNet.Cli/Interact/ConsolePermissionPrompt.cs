@@ -11,11 +11,13 @@ public sealed class ConsolePermissionPrompt : IPermissionPrompt
 {
     private readonly IConsoleInput _input;
     private readonly IConsoleOutput _output;
+    private readonly InputArbiter? _arbiter;
 
-    public ConsolePermissionPrompt(IConsoleInput input, IConsoleOutput output)
+    public ConsolePermissionPrompt(IConsoleInput input, IConsoleOutput output, InputArbiter? arbiter = null)
     {
         _input = input;
         _output = output;
+        _arbiter = arbiter;
     }
 
     public Task<PermissionChoice> PromptAsync(PermissionRequest request, CancellationToken ct)
@@ -28,6 +30,7 @@ public sealed class ConsolePermissionPrompt : IPermissionPrompt
         _output.WriteLine("  [a] allow once   [s] allow for session   [d] deny (default)");
         _output.Write("> ");
 
+        using var _ = _arbiter?.Begin();
         var key = _input.ReadKey();
         _output.WriteLine();
 

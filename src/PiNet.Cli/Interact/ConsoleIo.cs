@@ -2,6 +2,16 @@ namespace PiNet.Cli.Interact;
 
 public interface IConsoleInput
 {
+    /// <summary>
+    /// True when keystrokes can arrive asynchronously from a live terminal
+    /// (enables the in-flight steering capture, spec 08 §3.3); false for
+    /// redirected or scripted input, which keeps the sequential semantics.
+    /// </summary>
+    bool Interactive { get; }
+
+    /// <summary>A key is waiting to be read (never blocks, safe to poll).</summary>
+    bool KeyAvailable { get; }
+
     ConsoleKeyInfo? ReadKey();
 }
 
@@ -14,6 +24,10 @@ public interface IConsoleOutput
 
 public sealed class ConsoleInput : IConsoleInput
 {
+    public bool Interactive => !Console.IsInputRedirected;
+
+    public bool KeyAvailable => !Console.IsInputRedirected && Console.KeyAvailable;
+
     public ConsoleKeyInfo? ReadKey()
     {
         var previous = Console.TreatControlCAsInput;

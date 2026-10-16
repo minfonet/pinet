@@ -19,6 +19,7 @@ public sealed class InteractiveLoop
     private readonly string _cwd;
     private readonly IConsoleInput _input;
     private readonly IConsoleOutput _out;
+    private readonly InputArbiter? _inputArbiter;
     private readonly Action<CancellationTokenSource>? _turnCancellation;
     private readonly IPermissionResolver? _permissions;
     private readonly IPermissionPrompt? _permissionPrompt;
@@ -74,7 +75,8 @@ public sealed class InteractiveLoop
         double compactThreshold = 0.75,
         int compactPreserveRecent = 4,
         EffectiveSettings? settings = null,
-        ThinkingLevel? thinkingLevel = null)
+        ThinkingLevel? thinkingLevel = null,
+        InputArbiter? inputArbiter = null)
     {
         _chat = chat;
         _manager = manager;
@@ -101,6 +103,7 @@ public sealed class InteractiveLoop
         _settings = settings;
         _thinkingLevel = thinkingLevel ?? settings?.ThinkingLevel ?? ThinkingLevel.Off;
         _verbose = settings?.Verbose ?? false;
+        _inputArbiter = inputArbiter;
         _agentTools = AdaptExtensionTools();
     }
 
@@ -795,6 +798,10 @@ public sealed class InteractiveLoop
         var cts = CancellationTokenSource.CreateLinkedTokenSource(hostCt);
         _activeTurn = cts;
         _turnCancellation?.Invoke(cts);
+        // 7a.2 — live terminals capture keystrokes while the turn is in flight
+        // (Enter → steer, Alt+Enter → follow-up); scripted/redirected input keeps
+        // its sequential semantics.
+        var pump = _input.Interactive ? PumpTurnInputAsync(cts.Token) : null;
         try
         {
             // 7e — @path tokens become image attachments; unresolvable tokens stay as text.
@@ -813,9 +820,87 @@ public sealed class InteractiveLoop
         }
         finally
         {
+            cts.Cancel();
+            if (pump is not null)
+            {
+                // Text typed but not submitted before the turn ended goes back to
+                // the editor so it is not lost.
+                var leftover = await pump;
+                if (leftover.Length > 0)
+                    _editor.SetBuffer(leftover);
+            }
             _activeTurn = null;
         }
     }
+
+    /// <summary>
+    /// 7a.2 — reads keystrokes while a turn is in flight: Enter enqueues a
+    /// steering message, Alt+Enter a follow-up, Ctrl+C cancels the turn. Pauses
+    /// while an <see cref="InputArbiter"/> scope (permission prompt) owns the
+    /// input. Returns whatever was typed but not submitted when the turn ended.
+    /// </summary>
+    private async Task<string> PumpTurnInputAsync(CancellationToken ct)
+    {
+        var buffer = new StringBuilder();
+        while (!ct.IsCancellationRequested)
+        {
+            if (_inputArbiter is { IsBusy: true } || !_input.KeyAvailable)
+            {
+                try
+                {
+                    await Task.Delay(TurnInputPollMs, ct);
+                }
+                catch (OperationCanceledException)
+                {
+                    break;
+                }
+                continue;
+            }
+
+            var key = _input.ReadKey();
+            if (key is null)
+                break;
+
+            var value = key.Value;
+            if (value.Modifiers.HasFlag(ConsoleModifiers.Control) && value.Key == ConsoleKey.C)
+            {
+                buffer.Clear();
+                _activeTurn?.Cancel();
+                continue;
+            }
+            if (value.Key == ConsoleKey.Backspace)
+            {
+                if (buffer.Length > 0)
+                    buffer.Length--;
+                continue;
+            }
+            if (value.Key == ConsoleKey.Enter)
+            {
+                var line = buffer.ToString().Trim();
+                buffer.Clear();
+                if (line.Length == 0)
+                    continue;
+                if (value.Modifiers.HasFlag(ConsoleModifiers.Alt))
+                {
+                    _agent?.FollowUp(line);
+                    _out.WriteLine($"(follow-up: {line})", ConsoleColor.DarkGray);
+                }
+                else
+                {
+                    _agent?.Steer(line);
+                    _out.WriteLine($"(steering: {line})", ConsoleColor.DarkGray);
+                }
+                continue;
+            }
+            if (!value.Modifiers.HasFlag(ConsoleModifiers.Control) &&
+                value.KeyChar >= 0x20 && value.KeyChar != 0x7f)
+                buffer.Append(value.KeyChar);
+        }
+
+        return buffer.ToString();
+    }
+
+    private const int TurnInputPollMs = 15;
 
     /// <summary>7e — user message carrying text (when present) plus image attachments.</summary>
     private static ChatMessage ImageMessage(string text, List<ImageContent> images)
