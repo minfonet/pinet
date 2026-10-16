@@ -28,6 +28,21 @@ public class PrintModeCliTests
         Assert.Contains("Cost: $", stdout);
     }
 
+    [Fact]
+    public void AgentMode_WinsOverPrintMode_WhenBothFlagsAreGiven()
+    {
+        using var env = new ExtTestEnv();
+        var (stdout, _, code) = RunProgram(
+        [
+            "--agent", "--approve", "--provider", "faux", "--model", "faux-model",
+            "-p", "read_file docs/README.md",
+            "--no-extensions", "--no-skills", "--no-prompt-templates"
+        ]);
+
+        Assert.Equal(0, code);
+        Assert.Contains("> Tool: read_file", stdout);
+    }
+
     private static (string Stdout, string Stderr, int Code) RunProgram(string[] args)
     {
         var oldOut = Console.Out;

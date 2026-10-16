@@ -19,6 +19,7 @@ public sealed class InteractiveLoop
     private readonly string _cwd;
     private readonly IConsoleInput _input;
     private readonly IConsoleOutput _out;
+    private readonly AgentStreamPrinter _printer;
     private readonly InputArbiter? _inputArbiter;
     private readonly Action<CancellationTokenSource>? _turnCancellation;
     private readonly IPermissionResolver? _permissions;
@@ -85,6 +86,7 @@ public sealed class InteractiveLoop
         _model = modelId;
         _input = input;
         _out = output;
+        _printer = new AgentStreamPrinter(output);
         NoSession = noSession;
         SessionRef = sessionRef;
         ForkRef = forkRef;

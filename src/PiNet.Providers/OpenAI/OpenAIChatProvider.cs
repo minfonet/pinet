@@ -48,6 +48,14 @@ public sealed class OpenAIChatProvider : IChatProvider
         Models = models ?? OpenAICatalog.Models;
     }
 
+    /// <summary>Test-only constructor allowing an injected HTTP transport.</summary>
+    internal OpenAIChatProvider(HttpMessageHandler handler, string baseUrl = "http://localhost/v1", string providerId = "test")
+        : this(store: null, baseUrl: baseUrl, apiKey: "test-key", models: null, providerId: providerId, name: "Test")
+    {
+        _http.Dispose();
+        _http = new HttpClient(handler) { Timeout = Timeout.InfiniteTimeSpan };
+    }
+
     public async IAsyncEnumerable<StreamEvent> StreamAsync(ChatRequest request, AuthInfo auth)
     {
         if (string.IsNullOrWhiteSpace(auth.ApiKey))
@@ -127,6 +135,9 @@ public sealed class OpenAIChatProvider : IChatProvider
                     {
                         sawFinish = true;
                         var reason = finish.GetString() ?? "stop";
+                        // SR-01.05: close every buffered call before the unified StreamEnd.
+                        foreach (var (endIndex, detail) in FinishToolCalls(toolBuffer))
+                            yield return new ToolCallEnd(endIndex, detail);
                         yield return new StreamEnd(reason, usage, BuildAssistantMessage(toolBuffer, reason));
                     }
 
@@ -159,18 +170,26 @@ public sealed class OpenAIChatProvider : IChatProvider
 
                                 if (tc.TryGetProperty("id", out var idProp) && idProp.ValueKind == JsonValueKind.String)
                                     acc.Id ??= idProp.GetString();
-                                if (tc.TryGetProperty("function", out var fn))
+                                if (tc.TryGetProperty("function", out var fn) &&
+                                    fn.TryGetProperty("name", out var nameProp) && nameProp.ValueKind == JsonValueKind.String)
+                                    acc.Name ??= nameProp.GetString();
+
+                                // SR-01.05: announce the call as soon as its identity is known,
+                                // then stream argument fragments until the stream ends.
+                                if (!acc.Started && acc.Id is not null && acc.Name is not null)
                                 {
-                                    if (fn.TryGetProperty("name", out var nameProp) && nameProp.ValueKind == JsonValueKind.String)
-                                        acc.Name ??= nameProp.GetString();
-                                    if (fn.TryGetProperty("arguments", out var argsProp) && argsProp.ValueKind == JsonValueKind.String)
+                                    acc.Started = true;
+                                    yield return new ToolCallStart(index, acc.Id, acc.Name);
+                                }
+
+                                if (tc.TryGetProperty("function", out var fnArgs) &&
+                                    fnArgs.TryGetProperty("arguments", out var argsProp) && argsProp.ValueKind == JsonValueKind.String)
+                                {
+                                    var fragment = argsProp.GetString();
+                                    if (!string.IsNullOrEmpty(fragment))
                                     {
-                                        var fragment = argsProp.GetString();
-                                        if (!string.IsNullOrEmpty(fragment))
-                                        {
-                                            acc.Arguments.Append(fragment);
-                                            yield return new ToolCallDelta(index, fragment);
-                                        }
+                                        acc.Arguments.Append(fragment);
+                                        yield return new ToolCallDelta(index, fragment);
                                     }
                                 }
                             }
@@ -183,9 +202,22 @@ public sealed class OpenAIChatProvider : IChatProvider
             }
 
             if (!sawFinish)
+            {
+                foreach (var (endIndex, detail) in FinishToolCalls(toolBuffer))
+                    yield return new ToolCallEnd(endIndex, detail);
                 yield return new StreamEnd("stop", usage, BuildAssistantMessage(toolBuffer, "stop"));
+            }
         }
     }
+
+    private static IEnumerable<(int Index, ToolCallDetail Detail)> FinishToolCalls(
+        Dictionary<int, OpenAIToolAccumulator> toolBuffer) =>
+        toolBuffer.Values
+            .OrderBy(t => t.Index)
+            .Select(acc => (acc.Index, new ToolCallDetail(
+                acc.Id ??= Guid.NewGuid().ToString(),
+                acc.Name ??= "tool",
+                acc.Arguments.ToString())));
 
     private static ChatMessage BuildAssistantMessage(Dictionary<int, OpenAIToolAccumulator> toolBuffer, string stopReason)
     {
@@ -193,8 +225,8 @@ public sealed class OpenAIChatProvider : IChatProvider
         var toolCalls = new List<ToolCallContent>();
         string? text = null;
 
-        foreach (var acc in toolBuffer.Values.OrderBy(t => t.Index))
-            toolCalls.Add(new ToolCallContent(acc.Id ?? Guid.NewGuid().ToString(), acc.Name ?? "tool", ParseArguments(acc.Arguments.ToString())));
+        foreach (var (_, detail) in FinishToolCalls(toolBuffer))
+            toolCalls.Add(new ToolCallContent(detail.Id, detail.Name, ParseArguments(detail.ArgumentsJson)));
 
         if (toolCalls.Count > 0)
             blocks.AddRange(toolCalls);
@@ -339,6 +371,7 @@ public sealed class OpenAIChatProvider : IChatProvider
         public int Index { get; init; }
         public string? Id { get; set; }
         public string? Name { get; set; }
+        public bool Started { get; set; }
         public StringBuilder Arguments { get; } = new();
     }
 }

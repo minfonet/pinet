@@ -23,8 +23,8 @@ Initial complete implementation: stages 1–8 of
 [spec 01–08](docs/spec/) verified against the running CLI.
 
 **Verified state:** `dotnet build PiNet.slnx` clean (0 warnings, 0 errors);
-`dotnet test PiNet.slnx` — 380 passing, 0 failing (34 Providers + 49 Permissions
-+ 52 AgentCore + 27 Sessions + 154 Cli + 64 Extensions).
+`dotnet test PiNet.slnx` — 396 passing, 0 failing (40 Providers + 49 Permissions
++ 52 AgentCore + 27 Sessions + 159 Cli + 69 Extensions).
 
 ### Stage 1 — Foundation & Unified LLM abstraction
 
@@ -134,9 +134,37 @@ Initial complete implementation: stages 1–8 of
 
 ### Fixed
 
+- **Tool calling against real providers.** `OpenAIChatProvider` (SSE) and
+  `AnthropicChatProvider` only emitted `ToolCallDelta`, never
+  `ToolCallStart`/`ToolCallEnd`; the agent loop assembles tool calls from the
+  full SR-01.05 sequence, so every real tool call was silently dropped (the
+  model's call rendered as plain text or the turn ended with no answer). Both
+  providers now emit the complete sequence, covered by `StreamingToolCallTests`
+  (canned OpenAI-compatible and Anthropic wire streams) and a real llama.cpp
+  agent run that executes `read_file`.
+- Live agent rendering repeated streamed content (thinking and text were
+  printed once while streaming and again when the line was flushed). New
+  `AgentStreamPrinter` terminates already-streamed lines with a newline instead
+  of re-printing them; used by one-shot `--agent` and the interactive loop.
+- `--agent` combined with `-p/--print` silently ran print mode (no tools,
+  no agent loop) because print won the dispatch; `--agent` now takes
+  precedence and `-p` only selects print mode when `--agent` is absent.
 - Every `pinet install|list|remove|update` invocation printed usage because the
   top-level dispatch sliced the args before `PackageCommands`; regression
   covered by `PackageManagerCliTests.Program_DispatchesPackageSubcommands_WithFullArgs`.
+- `pinet install npm:<pkg>` failed on Windows with “cannot find the file”: npm
+  ships as `npm.cmd` and `ProcessStartInfo` does not apply PATHEXT. CLI tools
+  are now resolved through PATH + PATHEXT (`PackageManager.ResolveExecutable`).
+- Package reinstall/removal failed on Windows with access denied when the
+  installed tree contained read-only files (git objects):
+  `PackageManager.DeleteDirectory` clears the attribute first, `git:` clones no
+  longer copy `.git` metadata into the package, and the post-clone temp
+  directory is cleaned up the same way.
+- `scripts/smoke-stage6.ps1`: the real-LLM step now runs in agent mode (the old
+  `-p` call never sent tools), honors `PI_NET_PROVIDER`/`PI_NET_MODEL` for local
+  providers (SKIP when neither keys nor a provider are set), fails on a
+  non-zero agent exit, survives a missing npm binary (SKIP instead of aborting),
+  and records every check in the summary (`$script:` scope bug).
 - `SessionJson` gained a shared `WriteEntryText` serializer (session files,
   exports and tests round-trip identically).
 - Settings manager: replaced the obsolete `JsonIgnoreCondition`/`IgnoreNullValues`

@@ -98,6 +98,9 @@ cat README.md | dotnet run --project src/PiNet.Cli -- --provider openai --model 
 dotnet run --project src/PiNet.Cli -- --agent --provider openai --model gpt-4o -p "List the files in the current directory, then stop."
 ```
 
+`-p` is optional with `--agent`: both run the agent loop non-interactively and
+exit; `--agent` takes precedence when you pass both.
+
 Permission behavior to keep in mind:
 
 - in a real terminal, `bash` asks for confirmation before running;
@@ -113,11 +116,24 @@ dotnet run --project src/PiNet.Cli -- --agent --approve --provider openai --mode
   (see [permissions.md](permissions.md) for rules and `/trust`).
 
 What to verify: the tool call is rendered, the result is fed back to the model
-and the final answer references it. A fun end-to-end check with an extension:
+and the final answer references it:
+
+```
+> Tool: read_file
+> ok: # Pi.NET
+…the model's final answer, derived from the tool result…
+```
+
+`> Tool: <name>` marks the call starting; `> ok:` / `> error:` is the truncated
+result the model sees on the next turn. If instead you only see the model
+*describing* a call as plain text and no `> Tool:` line appears, the call never
+reached the agent — see the llama.cpp row in [Troubleshooting](#9-troubleshooting).
+
+A fun end-to-end check with an extension:
 
 ```bash
 # Creates ~/.pinet/extensions/hello.cs if missing (see smoke script below)
-dotnet run --project src/PiNet.Cli -- --provider openai --model gpt-4o \
+dotnet run --project src/PiNet.Cli -- --agent --approve --provider openai --model gpt-4o \
   -p "Please call the hello tool and report exactly what it returns."
 ```
 
@@ -146,17 +162,21 @@ Worth exercising by hand:
 
 ## 6. Sessions
 
-Runs persist a JSONL session by default under `~/.pinet/sessions/`
-(`PI_NET_HOME/sessions`):
+Runs persist a JSONL session under `~/.pinet/sessions/` (`PI_NET_HOME/sessions`)
+when a session is created or resumed. With `-c`, the first run creates the
+latest session for this directory and later runs resume it:
 
 ```bash
-dotnet run --project src/PiNet.Cli -- --agent -p "Remember the number 42."
-dotnet run --project src/PiNet.Cli -- -c -p "What number did I ask you to remember?"
+dotnet run --project src/PiNet.Cli -- --agent -c "Remember the number 42."
+dotnet run --project src/PiNet.Cli -- --agent -c "What number did I ask you to remember?"
 ```
 
-- `-c` / `--continue` resumes the most recent session for this directory;
+- `-c` / `--continue` resumes the most recent session for this directory (or
+  creates one when none exists);
 - `--session <id|path>` resumes a specific one; `--fork <id|path>` forks it;
-- `--no-session` disables persistence for a run.
+- `--no-session` disables persistence for a run;
+- one-shot runs without any session flag are ephemeral; the interactive loop
+  (`-i`) creates a session by default.
 
 Verify the file was written (`Get-ChildItem $env:PI_NET_HOME\sessions` or
 `ls ~/.pinet/sessions`) and that the resumed run answers from history.
@@ -171,11 +191,13 @@ powershell -ExecutionPolicy Bypass -File scripts\smoke-stage6.ps1
 $env:OPENAI_API_KEY = "sk-..."; .\scripts\smoke-stage6.ps1 -OpenAiModel gpt-4o
 ```
 
-It (1) builds the solution, (2) installs an npm package (`pinet install
-npm:<pkg>`) against a real registry, (3) installs a local throwaway git bundle
-(`pinet install git:<path>`, no network), and (4) asks a real model to invoke a
-sample `hello` extension tool, creating `~/.pinet/extensions/hello.cs` if it is
-missing.
+It (0) builds the solution, (1) installs an npm package (`pinet install
+npm:<pkg>`) against a real registry, (2) installs a local throwaway git bundle
+(`pinet install git:<path>`, no network), and (3) asks a real model to invoke a
+sample `hello` extension tool in agent mode, creating
+`~/.pinet/extensions/hello.cs` if it is missing. For a local server, set
+`PI_NET_PROVIDER`/`PI_NET_MODEL` (e.g. `llama-cpp-` plus the model id) instead
+of a cloud API key.
 
 Steps that need network/keys report `WARN`/`SKIP` instead of failing, and the
 LLM step is informational (it depends on the model choosing to call the tool).
@@ -206,6 +228,8 @@ The script exits non-zero only on hard `FAIL`s.
 | `bash` denied without a prompt | non-interactive fallback is deny-all | add `--approve`, or `/trust` the directory interactively |
 | No `Tokens:`/`Cost:` line | provider did not report usage | still fine; usage is best-effort per provider |
 | Extension tool never called | model chose not to (or tool shadowed) | check startup warnings; ask explicitly “call the `hello` tool” |
+| Model prints `<tool_call>…</tool_call>` as plain text, no `> Tool:` line | llama.cpp server started without `--jinja`, so the tools array never reaches the chat template | restart `llama-server` with `--jinja`; a direct request containing `tools` must answer with structured `tool_calls` |
+| Agent answers without calling the tool / empty answer | tool call dropped on the wire | update Pi.NET (providers must emit `ToolCallStart`/`ToolCallEnd`); run `dotnet test PiNet.slnx` |
 
 Cost notes: use the smallest model that exercises the feature, keep prompts
 short, and remember the summary line is exact per run. For repeated checks,

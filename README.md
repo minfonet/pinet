@@ -11,7 +11,7 @@ with **Spec-Driven Development** (spec first, then verify against the running CL
 |------|-------|
 | Stages | **1–8 implemented**; product features verified (specs 01–08, incl. 7a.2); packaging/release verified locally |
 | Build | `dotnet build PiNet.slnx` — clean (0 warnings, 0 errors) |
-| Tests | **380 passing** (see verification commands below) |
+| Tests | **396 passing** (see verification commands below) |
 | Next | Configure the GitHub remote and cut the first `v0.1.0` release (per-RID binaries + tool package as Release assets; NuGet.org publication intentionally skipped) |
 
 See [`STATUS.md`](STATUS.md), [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md)
@@ -280,7 +280,7 @@ $env:OPENAI_API_KEY = "sk-..."; .\scripts\smoke-stage6.ps1 -OpenAiModel gpt-4o
 
 ```bash
 dotnet build PiNet.slnx        # 0 warnings, 0 errors
-dotnet test PiNet.slnx         # 380/380 passing
+dotnet test PiNet.slnx         # 396/396 passing
 dotnet run --project src/PiNet.Cli -- --list-models
 dotnet run --project src/PiNet.Cli -- --provider faux --model faux-model -p "hi"
 ```

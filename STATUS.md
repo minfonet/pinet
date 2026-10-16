@@ -9,7 +9,7 @@
 | Item | State |
 |------|-------|
 | Solution | `PiNet.slnx` — builds clean (0 warnings, 0 errors) |
-| Tests | **380 passing** (34 `PiNet.Providers.Tests` + 49 `PiNet.Permissions.Tests` + 52 `PiNet.AgentCore.Tests` + 27 `PiNet.Sessions.Tests` + 154 `PiNet.Cli.Tests` + 64 `PiNet.Extensions.Tests`), 0 failing |
+| Tests | **396 passing** (40 `PiNet.Providers.Tests` + 49 `PiNet.Permissions.Tests` + 52 `PiNet.AgentCore.Tests` + 27 `PiNet.Sessions.Tests` + 159 `PiNet.Cli.Tests` + 69 `PiNet.Extensions.Tests`), 0 failing |
 | Current stage | **Stage 8 — Packaging / CI / Release** — packaging + release workflow + `pinet update --self` implemented and verified locally; NuGet.org publication intentionally skipped (distribution via GitHub Release assets + local pack) |
 | Stages complete | 1, 2, 3, 4, 5, 6 + spec 07 + spec 08 (incl. 7a.2; specs verified against the running CLI) |
 | Packaging | `dotnet pack` → `PiNet.0.1.0.nupkg` verified (tool install + run from a local feed); self-contained `win-x64` publish verified; CI + release workflows committed; `scripts/publish.ps1` for local per-RID publishes |
@@ -219,7 +219,7 @@ GitHub remote and cut the first tagged release; SBOM/signing decisions.
 ## Known issues / next steps
 
 1. **Stage 7 — Advanced Features** — ✅ complete (2026-10-16): 7a–7g verified,
-   380 tests passing. Remaining deferred items (documented, non-blocking):
+   396 tests passing. Remaining deferred items (documented, non-blocking):
    - 7e — clipboard/paste image input (platform-dependent, optional per spec).
    - 7g — settings hot-reload during a running session (restart picks up
      changes).
@@ -230,15 +230,16 @@ GitHub remote and cut the first tagged release; SBOM/signing decisions.
    assets carry the binaries and the tool package), decide on SBOM/telemetry
    (currently none, per the zero-dependency posture).
 
-3. **Deferred (from earlier stages)** — Stage 6 network smoke tests
-   (`pinet install npm:`/`git:`, extension tool invoked by a real LLM); the
-   smoke script's optional `-Provider`/`-Model` local-provider parameters.
+3. **Stage 6 network smoke tests** — ✅ ran green end-to-end (2026-10-16):
+   `scripts\smoke-stage6.ps1` passed npm (`left-pad`, real registry), git (local
+   bundle, including reinstall over read-only objects) and the real-LLM step
+   (llama.cpp agent run calling the `hello` extension tool).
 
 ## Verification commands
 
 ```bash
 dotnet build PiNet.slnx        # 0 warnings, 0 errors
-dotnet test PiNet.slnx         # 380/380 passing
+dotnet test PiNet.slnx         # 396/396 passing
 dotnet run --project src/PiNet.Cli -- --list-models
 dotnet run --project src/PiNet.Cli -- --provider faux --model faux-model -p "hi"
 dotnet pack src/PiNet.Cli/PiNet.Cli.csproj -c Release -o artifacts/packages

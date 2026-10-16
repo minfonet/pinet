@@ -57,7 +57,8 @@
 - [x] `IMPLEMENTATION_PLAN.md` test-table re-audit (now a coverage summary with
   evidence per row).
 - [x] Doc/test-count consistency pass (README, STATUS, CHANGELOG, spec 08,
-  plan): 380 tests passing.
+  plan): 396 tests passing (after the real-LLM tool-calling and Windows
+  packaging fixes).
 - [x] **NuGet.org publication decision applied**: no publication — README,
   STATUS, CHANGELOG, plan, spec 00, `docs/packaging.md`, implementation notes,
   `release.yml` (NuGet push step removed) and the install scripts (local feed)

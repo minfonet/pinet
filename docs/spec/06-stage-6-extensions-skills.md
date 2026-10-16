@@ -538,3 +538,13 @@ Implemented as specified. Verification summary:
   and `git:<url>` (network), and an extension tool invoked by a real LLM
   end-to-end. Unit coverage of the local parts (`InstallAsync` path source,
   tar extraction, `ExtensionToolAdapter` → `AgentTool`) is green.
+- **2026-10-16 — network smoke green (real-LLM audit follow-up):**
+  `smoke-stage6.ps1 -SkipBuild` with a local llama.cpp provider
+  (`PI_NET_PROVIDER`/`PI_NET_MODEL`) and a temp `PI_NET_HOME`: npm install of
+  `left-pad` from the real registry PASS (exposed and fixed in this pass:
+  `npm.cmd`/PATHEXT resolution on Windows), local git bundle PASS including
+  reinstall over read-only git objects (fixed: read-only-safe deletes, `.git`
+  no longer copied into packages), and the model invoked the `hello` extension
+  tool in agent mode PASS. The script itself was hardened (agent-mode LLM step,
+  `PI_NET_PROVIDER`/`PI_NET_MODEL` support, SKIP on missing npm, complete
+  summary).

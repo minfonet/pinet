@@ -42,8 +42,8 @@ The original Pi project (TypeScript/Node.js) is structured as a monorepo with th
 | 8 — Polish, Packaging & Release | [DONE] packaging + release workflow + `pinet update --self` verified locally; distribution via GitHub Release assets (NuGet.org publication intentionally skipped) |
 
 Verified baseline: `dotnet build PiNet.slnx` clean (0 warnings / 0 errors);
-`dotnet test PiNet.slnx` — 380 passing (34 Providers + 49 Permissions + 52
-AgentCore + 27 Sessions + 154 Cli + 64 Extensions).
+`dotnet test PiNet.slnx` — 396 passing (40 Providers + 49 Permissions + 52
+AgentCore + 27 Sessions + 159 Cli + 69 Extensions).
 
 ### Recommended implementation order (remaining work)
 
@@ -517,6 +517,6 @@ reference `xunit` + `Microsoft.NET.Test.Sdk`.
 ---
 
 *Plan created: 2026-09-09*
-*Last updated: 2026-10-16 — 7a.2 in-flight keystroke capture implemented and verified (spec 08 §3.3); testing gap re-audit closed (380 tests passing); real-LLM testing guide + Pi-style extension guide added; NuGet.org publication intentionally skipped. Next: GitHub remote + first tagged release; see `STATUS.md` and `TASKS.md`.*
+*Last updated: 2026-10-16 — real-LLM audit fixed tool calling for OpenAI-compatible and Anthropic providers (Start/Delta/End events), de-duplicated live agent rendering, made `--agent` win over `-p`; Windows packaging fixes (npm.cmd/PATHEXT resolution, read-only-safe deletes, `.git` no longer copied into packages) and smoke-script hardening (agent-mode LLM step, `PI_NET_PROVIDER`/`PI_NET_MODEL`, complete summary); 396 tests passing. Next: GitHub remote + first tagged release; see `STATUS.md` and `TASKS.md`.*
 *Target: .NET 10 (preview → GA)*
 *Reference: https://github.com/earendil-works/pi*

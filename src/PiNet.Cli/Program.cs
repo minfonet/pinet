@@ -178,11 +178,13 @@ internal static class Program
             return 1;
         }
 
-        if (printMode)
-            return await PrintModeAsync(providerId, modelId, prompt, apiKeyOverride, noExtensions, noSkills, noTemplates, thinkingLevel);
-
+        // --agent wins over -p: with both flags the user asked for a tool-enabled
+        // non-interactive run; agent mode already prints the answer and exits.
         if (agentMode)
             return await AgentModeAsync(providerId, modelId, prompt, apiKeyOverride, sessionRef, forkRef, continueLatest, noSession, approve, noApprove, noExtensions, noSkills, noTemplates, thinkingLevel);
+
+        if (printMode)
+            return await PrintModeAsync(providerId, modelId, prompt, apiKeyOverride, noExtensions, noSkills, noTemplates, thinkingLevel);
 
         // No mode flag: default to one-shot print mode.
         return await PrintModeAsync(providerId, modelId, prompt, apiKeyOverride, noExtensions, noSkills, noTemplates, thinkingLevel);
@@ -458,14 +460,12 @@ internal static class Program
             runner.AttachSession(session);
 
         var renderState = LineState.Empty;
+        var streamPrinter = new AgentStreamPrinter(new ConsoleOutput());
         runner.AgentEventSink += async (evt, _) =>
         {
             var step = AgentConsoleRenderer.Step(renderState, evt);
             renderState = step.State;
-            if (step.Inline is not null)
-                WriteColored(step.Inline.Text, step.Inline.Color);
-            foreach (var completed in step.Completed)
-                WriteColoredLine(completed.Text, completed.Color);
+            streamPrinter.Print(step);
             await Task.CompletedTask;
         };
 

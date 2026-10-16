@@ -106,7 +106,7 @@ public interface IModelRunner
 - **When** the stream is consumed,
 - **Then** `ToolCallStart`/`ToolCallDelta`/`ToolCallEnd` events are emitted with a JSON Schema fragment of the arguments, and the assistant message contains the resolved `ToolCallContent` block.
 
-*Verified: covered by SR-02.xx in the agent core stage (Faux emits tool calls).*
+*Verified: `StreamingToolCallTests` (2026-10-16) assert the full Start/Delta/End sequence for canned OpenAI-compatible and Anthropic SSE streams, and a llama.cpp `--agent` run executed a real `read_file` call end-to-end. (Regression found during the real-LLM audit: the providers originally emitted only `ToolCallDelta`, silently dropping every call; fixed.)*
 
 ### SR-01.06 — Abort via cancellation token
 

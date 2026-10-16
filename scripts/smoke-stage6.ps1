@@ -5,16 +5,17 @@
 .DESCRIPTION
     Runs, in order:
 
-      1. Builds the solution (unless -SkipBuild).
-      2. `pinet install npm:<pkg>`  -> a real npm tarball (network required).
-      3. `pinet install git:<url>`  -> a local throwaway git bundle (no network),
+      0. Builds the solution (unless -SkipBuild).
+      1. `pinet install npm:<pkg>`  -> a real npm tarball (network required).
+      2. `pinet install git:<url>`  -> a local throwaway git bundle (no network),
          proving the npm-style tar + git clone + strip+install path.
-      4. A real LLM invoking the sample `hello` extension tool (needs
-         OPENAI_API_KEY or ANTHROPIC_API_KEY). Creates the sample extension in
-         ~/.pinet/extensions/ if it is missing.
+      3. A real LLM invoking the sample `hello` extension tool, in agent mode
+         (needs OPENAI_API_KEY or ANTHROPIC_API_KEY; for a local/self-hosted
+         provider such as llama.cpp set PI_NET_PROVIDER and PI_NET_MODEL instead).
+         Creates the sample extension in ~/.pinet/extensions/ if it is missing.
 
-    Note: steps 2 and 4 need network/credentials; failures there are reported
-    as WARNs and the rest of the smoke still runs. Step 4 also depends on the
+    Note: steps 1 and 3 need network/credentials; failures there are reported
+    as WARNs and the rest of the smoke still runs. Step 3 also depends on the
     model actually choosing to call the tool, so it is informational.
 
 .EXAMPLE
@@ -23,6 +24,12 @@
 .EXAMPLE
     $env:OPENAI_API_KEY = "sk-..."
     .\scripts\smoke-stage6.ps1 -OpenAiModel gpt-4o
+
+.EXAMPLE
+    # Local llama.cpp server via models.json (see docs/testing-with-a-real-llm.md)
+    $env:PI_NET_PROVIDER = "llama-cpp-"
+    $env:PI_NET_MODEL = "Qwen3.8-27B-GSQ-RCO-IQ3_S-mtp"
+    .\scripts\smoke-stage6.ps1
 #>
 [CmdletBinding()]
 param(
@@ -51,16 +58,26 @@ function Write-Step([string]$label) {
 }
 
 function Invoke-Pinet([string[]]$subArgs) {
-    & $dotnet "run" "--project" $projectPath "--" @subArgs 2>&1 | Out-String
+    # Native stderr must not trip $ErrorActionPreference = "Stop"; steps inspect
+    # $LASTEXITCODE and downgrade to WARN/SKIP on their own (e.g. npm missing).
+    $previous = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+        & $dotnet "run" "--project" $projectPath "--" @subArgs 2>&1 | Out-String
+    }
+    finally {
+        $ErrorActionPreference = $previous
+    }
 }
 
 function Assert-Contains([string]$text, [string]$needle, [string]$step) {
     if ($text -match [regex]::Escape($needle)) {
-        $results += , @($step, "PASS")
+        # $script: is required: += inside a function would only touch a local copy.
+        $script:results += , @($step, "PASS")
         Write-Host ("[PASS] " + $step + "  (" + $needle + ")") -ForegroundColor Green
     }
     else {
-        $results += , @($step, "FAIL")
+        $script:results += , @($step, "FAIL")
         Write-Host ("[FAIL] " + $step + "  expected substring was not found: " + $needle) -ForegroundColor Red
     }
 }
@@ -78,6 +95,7 @@ if (-not $SkipBuild) {
 
 # -------------------------------------------------------------- 1. npm pack
 Write-Step ("1. pinet install npm:" + $NpmPackage)
+$npmInstalled = $false
 $npmOut = Invoke-Pinet @("install", ("npm:" + $NpmPackage))
 if ($LASTEXITCODE -ne 0) {
     Write-Warning ("npm install failed (exit " + $LASTEXITCODE + "):" + $npmOut + " - network or registry issue? Skipping, continuing.")
@@ -85,13 +103,17 @@ if ($LASTEXITCODE -ne 0) {
 }
 else {
     Assert-Contains $npmOut "installed" "npm install"
+    $npmInstalled = $true
 }
 
 # list shows the newly recorded package. Note: for a bare npm package the
 # recorded name comes from the extracted folder ("pkg", v0.0.0) unless the
 # tarball ships a pinet.json, so we only assert the list is non-empty here.
 $listOut = Invoke-Pinet @("list")
-if ($listOut -match "\(no packages installed\)") {
+if (-not $npmInstalled) {
+    $results += , @("npm install visible in list", "SKIP")
+}
+elseif ($listOut -match "\(no packages installed\)") {
     $results += , @("npm install visible in list", "FAIL")
     Write-Host "[FAIL] npm install visible in list  (list stayed empty)" -ForegroundColor Red
 }
@@ -140,10 +162,10 @@ else {
 }
 
 # ----------------------------------------------------------------- 3. LLM
-Write-Step "3. Real LLM invokes the hello extension tool"
+Write-Step "3. Real LLM invokes the hello extension tool in agent mode"
 $apiKey = if ($env:OPENAI_API_KEY) { $env:OPENAI_API_KEY } else { $env:ANTHROPIC_API_KEY }
-if (-not $apiKey) {
-    Write-Host "No OPENAI_API_KEY / ANTHROPIC_API_KEY set - skipping the LLM step (set one and re-run to include it)." -ForegroundColor Yellow
+if (-not $apiKey -and -not $env:PI_NET_PROVIDER) {
+    Write-Host "No OPENAI_API_KEY / ANTHROPIC_API_KEY (or PI_NET_PROVIDER) set - skipping the LLM step (set one and re-run to include it)." -ForegroundColor Yellow
     $results += , @("LLM extension tool", "SKIP")
 }
 else {
@@ -172,20 +194,32 @@ public sealed class HelloExtension : IExtension
         Write-Host ("Created sample extension: " + $sample) -ForegroundColor Yellow
     }
 
-    $provider = if ($env:OPENAI_API_KEY) { "openai" } else { "anthropic" }
-    $model    = if ($env:OPENAI_API_KEY) { $OpenAiModel } else { $AnthropicModel }
+    $provider = if ($env:PI_NET_PROVIDER) { $env:PI_NET_PROVIDER } elseif ($env:OPENAI_API_KEY) { "openai" } else { "anthropic" }
+    $model    = if ($env:PI_NET_MODEL) { $env:PI_NET_MODEL } elseif ($env:OPENAI_API_KEY) { $OpenAiModel } else { $AnthropicModel }
     $prompt   = "Please call the hello tool and report exactly what it returns."
 
     Write-Host ("provider/model: " + $provider + "/" + $model)
-    $llmOut = Invoke-Pinet @("--provider", $provider, "--model", $model, "-p", $prompt)
+    # Agent mode (prompt as a positional argument, not -p): the plain print path sends no
+    # tools, so the model could never call the extension. --approve skips the permission
+    # prompt for the run.
+    $llmOut = Invoke-Pinet @("--agent", "--approve", "--provider", $provider, "--model", $model, $prompt)
+    $llmExit = $LASTEXITCODE
+    $llmTail = ($llmOut -split "`r?`n" | Select-Object -Last 15) -join "`n"
 
-    if ($llmOut -match [regex]::Escape("Hello from extension!")) {
+    if ($llmExit -ne 0) {
+        # Configuration problem (e.g. unknown model / provider missing from models.json).
+        Write-Host ("[FAIL] the agent run failed (exit " + $llmExit + "):") -ForegroundColor Red
+        Write-Host $llmTail
+        $results += , @("LLM extension tool", "FAIL")
+    }
+    elseif ($llmOut -match [regex]::Escape("Hello from extension!")) {
         $results += , @("LLM extension tool", "PASS")
         Write-Host "[PASS] the model called hello and reported 'Hello from extension!'" -ForegroundColor Green
     }
     else {
-        # Informational: the model may not have chosen to call the tool.
-        Write-Warning "The agent ran, but 'Hello from extension!' was not found in its reply. The model may not have called the tool; inspect the output above."
+        # Informational: the agent ran, but the model may not have chosen to call the tool.
+        Write-Warning "The agent ran, but 'Hello from extension!' was not found in its reply. Last lines of the run:"
+        Write-Host $llmTail
         $results += , @("LLM extension tool", "INFO")
     }
 }

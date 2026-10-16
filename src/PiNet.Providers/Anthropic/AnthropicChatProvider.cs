@@ -49,6 +49,14 @@ public sealed class AnthropicChatProvider : IChatProvider
         Models = models ?? AnthropicCatalog.Models;
     }
 
+    /// <summary>Test-only constructor allowing an injected HTTP transport.</summary>
+    internal AnthropicChatProvider(HttpMessageHandler handler, string baseUrl = "http://localhost", string providerId = "test")
+        : this(store: null, baseUrl: baseUrl, apiKey: "test-key", models: null, providerId: providerId, name: "Test")
+    {
+        _http.Dispose();
+        _http = new HttpClient(handler) { Timeout = Timeout.InfiniteTimeSpan };
+    }
+
     public async IAsyncEnumerable<StreamEvent> StreamAsync(ChatRequest request, AuthInfo auth)
     {
         if (string.IsNullOrWhiteSpace(auth.ApiKey))
@@ -147,6 +155,10 @@ public sealed class AnthropicChatProvider : IChatProvider
                             while (blocks.Count <= index)
                                 blocks.Add(new AnthropicBlockAccumulator { Index = blocks.Count });
                             blocks[index] = acc;
+
+                            // SR-01.05: announce tool calls as soon as the block starts.
+                            if (blockType == "tool_use")
+                                yield return new ToolCallStart(index, acc.Id ??= Guid.NewGuid().ToString(), acc.Name ??= "tool");
                         }
                         break;
                     }
@@ -198,6 +210,13 @@ public sealed class AnthropicChatProvider : IChatProvider
                         }
                         break;
                     }
+                    case "content_block_stop":
+                    {
+                        // SR-01.05: a stopped tool_use block is a complete tool call.
+                        foreach (var (blockIndex, detail) in PendingToolCallEnds(blocks))
+                            yield return new ToolCallEnd(blockIndex, detail);
+                        break;
+                    }
                     case "message_delta":
                     {
                         if (chunk.TryGetProperty("usage", out var mu))
@@ -208,9 +227,13 @@ public sealed class AnthropicChatProvider : IChatProvider
                         break;
                     }
                     case "message_stop":
+                    {
+                        foreach (var (blockIndex, detail) in PendingToolCallEnds(blocks))
+                            yield return new ToolCallEnd(blockIndex, detail);
                         sawDone = true;
                         yield return new StreamEnd("stop", usage, BuildAssistantMessage(blocks));
                         break;
+                    }
                     case "error":
                     {
                         var message = chunk.TryGetProperty("error", out var e) &&
@@ -224,7 +247,28 @@ public sealed class AnthropicChatProvider : IChatProvider
             }
 
             if (!sawDone)
+            {
+                foreach (var (blockIndex, detail) in PendingToolCallEnds(blocks))
+                    yield return new ToolCallEnd(blockIndex, detail);
                 yield return new StreamEnd("stop", usage, BuildAssistantMessage(blocks));
+            }
+        }
+    }
+
+    /// <summary>SR-01.05 — completes tool_use blocks whose End was not emitted yet.</summary>
+    private static IEnumerable<(int Index, ToolCallDetail Detail)> PendingToolCallEnds(
+        List<AnthropicBlockAccumulator> blocks)
+    {
+        foreach (var acc in blocks.OrderBy(b => b.Index))
+        {
+            if (acc.Kind != "tool_use" || acc.Ended)
+                continue;
+            acc.Ended = true;
+            var json = acc.Json?.ToString();
+            yield return (acc.Index, new ToolCallDetail(
+                acc.Id ??= Guid.NewGuid().ToString(),
+                acc.Name ??= "tool",
+                string.IsNullOrWhiteSpace(json) ? "{}" : json));
         }
     }
 
@@ -416,6 +460,7 @@ public sealed class AnthropicChatProvider : IChatProvider
         public string? Kind { get; set; }
         public string? Id { get; set; }
         public string? Name { get; set; }
+        public bool Ended { get; set; }
         public StringBuilder? Text { get; set; }
         public StringBuilder? Thinking { get; set; }
         public StringBuilder? Json { get; set; }

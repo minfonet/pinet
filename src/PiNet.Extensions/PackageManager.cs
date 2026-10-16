@@ -28,8 +28,7 @@ public static class PackageManager
 
         var (name, version) = ReadManifest(resolved);
         var dest = Path.Combine(ExtensionsPaths.PackagesRoot, name);
-        if (Directory.Exists(dest))
-            Directory.Delete(dest, recursive: true);
+        DeleteDirectory(dest);
         Directory.CreateDirectory(dest);
 
         CopyDirectory(resolved, dest);
@@ -63,7 +62,7 @@ public static class PackageManager
         }
         finally
         {
-            try { Directory.Delete(temp, recursive: true); } catch { /* best effort */ }
+            try { DeleteDirectory(temp); } catch { /* best effort */ }
         }
     }
 
@@ -87,7 +86,7 @@ public static class PackageManager
         }
         finally
         {
-            try { Directory.Delete(temp, recursive: true); } catch { /* best effort */ }
+            try { DeleteDirectory(temp); } catch { /* best effort */ }
         }
     }
 
@@ -105,8 +104,7 @@ public static class PackageManager
         if (match is null)
             throw new IOException($"package not installed: {name}");
         packages.Remove(match);
-        if (Directory.Exists(match.Path))
-            Directory.Delete(match.Path, recursive: true);
+        DeleteDirectory(match.Path);
         await SaveIndexAsync(packages, ct);
     }
 
@@ -235,17 +233,79 @@ public static class PackageManager
         }
     }
 
+    /// <summary>
+    /// Deletes a directory tree, clearing the read-only attribute first: git checkouts
+    /// and bundles contain read-only object files on Windows, and
+    /// <see cref="Directory.Delete(string, bool)"/> then fails with "access denied".
+    /// </summary>
+    internal static void DeleteDirectory(string path)
+    {
+        if (!Directory.Exists(path))
+            return;
+
+        foreach (var file in Directory.GetFiles(path, "*", SearchOption.AllDirectories))
+        {
+            try { File.SetAttributes(file, FileAttributes.Normal); } catch { /* best effort */ }
+        }
+
+        Directory.Delete(path, recursive: true);
+    }
+
     private static void CopyDirectory(string source, string dest)
     {
-        foreach (var file in Directory.GetFiles(source, "*", SearchOption.AllDirectories))
+        foreach (var directory in EnumerateDirectories(source))
         {
-            var relative = Path.GetRelativePath(source, file);
-            var target = Path.Combine(dest, relative);
-            var targetDir = Path.GetDirectoryName(target);
-            if (!string.IsNullOrEmpty(targetDir))
-                Directory.CreateDirectory(targetDir);
-            File.Copy(file, target, overwrite: true);
+            var targetDir = Path.Combine(dest, Path.GetRelativePath(source, directory));
+            Directory.CreateDirectory(targetDir);
+            foreach (var file in Directory.GetFiles(directory))
+                File.Copy(file, Path.Combine(targetDir, Path.GetFileName(file)), overwrite: true);
         }
+    }
+
+    /// <summary>Walks a directory tree, skipping VCS metadata (.git) at any depth.</summary>
+    private static IEnumerable<string> EnumerateDirectories(string root)
+    {
+        yield return root;
+        foreach (var child in Directory.EnumerateDirectories(root))
+        {
+            if (Path.GetFileName(child).Equals(".git", StringComparison.OrdinalIgnoreCase))
+                continue;
+            foreach (var nested in EnumerateDirectories(child))
+                yield return nested;
+        }
+    }
+
+    /// <summary>
+    /// Resolves a CLI tool to an executable path. On Windows tools like npm ship only
+    /// <c>.cmd</c> shims (<c>npm.cmd</c>) and <see cref="ProcessStartInfo"/> with
+    /// <c>UseShellExecute = false</c> does not apply PATHEXT, so a bare name fails with
+    /// "cannot find the file". Probing PATH with PATHEXT restores those tools.
+    /// </summary>
+    internal static string ResolveExecutable(
+        string command,
+        string? pathValue = null,
+        string? pathExtValue = null,
+        bool? isWindows = null)
+    {
+        if (!(isWindows ?? OperatingSystem.IsWindows()))
+            return command;
+
+        var extensions = (pathExtValue ?? Environment.GetEnvironmentVariable("PATHEXT") ?? ".COM;.EXE;.BAT;.CMD")
+            .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+        foreach (var dir in (pathValue ?? Environment.GetEnvironmentVariable("PATH") ?? string.Empty)
+                     .Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var trimmed = dir.Trim('"');
+            foreach (var extension in extensions)
+            {
+                var candidate = Path.Combine(trimmed, command + extension);
+                if (File.Exists(candidate))
+                    return candidate;
+            }
+        }
+
+        return command;
     }
 
     private static async Task<(int ExitCode, string Output, string Error)> RunAsync(
@@ -256,7 +316,7 @@ public static class PackageManager
     {
         var psi = new ProcessStartInfo
         {
-            FileName = command,
+            FileName = ResolveExecutable(command),
             UseShellExecute = false,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
