@@ -62,3 +62,9 @@
   (or `/models`) with no argument lists numbered models and accepts a pick by
   number or `provider/id`; `q` cancels, invalid numbers are rejected. 4 new
   `InteractiveLoopTests` + parser alias test (401 tests total).
+- [x] **`run.bat` hardened after the "black window" report** — builds with
+  `-tl:off` (plain output; no screen-clearing live terminal logger), launches
+  the built executable directly, warns when a previous `pinet.exe` keeps
+  `bin\...\pinet.exe` locked, and pauses on failure. Two stuck launches were
+  diagnosed: one apphost suspended at 2 MB (terminal handoff never resumed it)
+  and one app running fine inside a hidden console with no terminal window.

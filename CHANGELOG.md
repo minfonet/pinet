@@ -160,6 +160,14 @@ Initial complete implementation: stages 1–8 of
   exports and tests round-trip identically).
 - Settings manager: replaced the obsolete `JsonIgnoreCondition`/`IgnoreNullValues`
   API to keep the build warning-free.
+- `run.bat` left a black, unusable window on Windows: it relied on `dotnet run`,
+  whose MSBuild terminal logger clears the screen during the build and whose
+  default-terminal handoff can suspend the app (apphost frozen at 2 MB, never
+  resumed) or leave it running in a hidden console with no terminal window when
+  the window is opened just for the script. It now builds once with plain output
+  (`-tl:off`), launches the built executable directly, warns when a previous
+  `pinet.exe` still locks `bin\...\pinet.exe`, and pauses on failure so the
+  error stays visible.
 
 ### Deferred
 
