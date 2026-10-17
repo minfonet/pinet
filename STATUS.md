@@ -1,6 +1,6 @@
 # PiNet — Project Status
 
-> Last updated: 2026-10-16
+> Last updated: 2026-10-17
 > Companion to [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md). Per-stage detail lives in
 > [`docs/spec/`](docs/spec/) (spec-driven development: spec written before code, then verified).
 
@@ -9,7 +9,7 @@
 | Item | State |
 |------|-------|
 | Solution | `PiNet.slnx` — builds clean (0 warnings, 0 errors) |
-| Tests | **396 passing** (40 `PiNet.Providers.Tests` + 49 `PiNet.Permissions.Tests` + 52 `PiNet.AgentCore.Tests` + 27 `PiNet.Sessions.Tests` + 159 `PiNet.Cli.Tests` + 69 `PiNet.Extensions.Tests`), 0 failing |
+| Tests | **401 passing** (40 `PiNet.Providers.Tests` + 49 `PiNet.Permissions.Tests` + 52 `PiNet.AgentCore.Tests` + 27 `PiNet.Sessions.Tests` + 164 `PiNet.Cli.Tests` + 69 `PiNet.Extensions.Tests`), 0 failing |
 | Current stage | **Stage 8 — Packaging / CI** — packaging + CI workflow + `pinet update --self` implemented and verified locally; distribution from source (local pack + install scripts + per-RID publish) |
 | Stages complete | 1, 2, 3, 4, 5, 6 + spec 07 + spec 08 (incl. 7a.2; specs verified against the running CLI) |
 | Packaging | `dotnet pack` → `PiNet.0.1.0.nupkg` verified (tool install + run from a local feed); self-contained `win-x64` publish verified; CI workflow committed; `scripts/publish.ps1` for local per-RID publishes |
@@ -28,9 +28,9 @@
 | `PiNet.AgentCore.Tests` | Loop, hooks, tool execution, built-in tools, steering/follow-up (scripted `IModelRunner`), `TokenEstimator`/usage (spec 08 §7b), thinking capture + cross-provider normalization (spec 08 §7c/§7d) | 52 passing |
 | `PiNet.Sessions.Tests` | Session tree, JSONL store, compactor, `ContextCompactor` (spec 08 §7b, incl. above/below-threshold auto-compaction), export/import round-trips (spec 08 §7f) | 27 passing |
 | `PiNet.Permissions.Tests` | Rule matching, resolution algorithm, config load/save/malformed (incl. CLI startup error path), `PI_NET_HOME`, `TrustStore`, `ToolPaths` | 49 passing |
-| `PiNet.Cli.Tests` | Line editor, history, slash parser (incl. `/skill:`), renderer folding, full `InteractiveLoop` tests (scripted keys, `ScriptedProvider`, `HangingProvider`, `GatedProvider`), permission-gate AC1–AC4 tests (`PermissionGateTests`, `ToolCallScript`), `/compact` + `/thinking` + `/export`/`/import` + image-input tests (spec 08 §7b–§7f), 7a.2 steering-capture tests (`SteeringCaptureTests`), print-mode token/cost test (`PrintModeCliTests`), `SettingsTests` (spec 08 §7g), plus `SlashSkillTests`, `ExtensionCommandTests`, `TemplateLoopTests`, `CliEnvironmentTests`, `PackageManagerCliTests` (Spec 06, incl. CLI dispatch regression) | 154 passing |
-| `PiNet.Extensions.Tests` | Skill frontmatter/registry/catalog, template expander/registry, context files + system prompt builder, tar extractor, package manager, extension host (incl. real SDK compile + cache reuse) | 64 passing |
-| `PiNet.Providers.Tests` | `models.json` parsing + warnings, `ConfigCredentialResolver` (`$ENV`/literal/fallback), custom provider registration (OpenAI/Anthropic), built-in merge by model id, end-to-end `PI_NET_HOME` (spec 07), thinking payload wire tests (spec 08 §7c) | 34 passing |
+| `PiNet.Cli.Tests` | Line editor, history, slash parser (incl. `/skill:`), renderer folding, full `InteractiveLoop` tests (scripted keys, `ScriptedProvider`, `HangingProvider`, `GatedProvider`), permission-gate AC1–AC4 tests (`PermissionGateTests`, `ToolCallScript`), `/compact` + `/thinking` + `/export`/`/import` + image-input tests (spec 08 §7b–§7f), 7a.2 steering-capture tests (`SteeringCaptureTests`), print-mode token/cost test (`PrintModeCliTests`), `SettingsTests` (spec 08 §7g), plus `SlashSkillTests`, `ExtensionCommandTests`, `TemplateLoopTests`, `CliEnvironmentTests`, `PackageManagerCliTests` (Spec 06, incl. CLI dispatch regression) | 164 passing |
+| `PiNet.Extensions.Tests` | Skill frontmatter/registry/catalog, template expander/registry, context files + system prompt builder, tar extractor, package manager, extension host (incl. real SDK compile + cache reuse) | 69 passing |
+| `PiNet.Providers.Tests` | `models.json` parsing + warnings, `ConfigCredentialResolver` (`$ENV`/literal/fallback), custom provider registration (OpenAI/Anthropic), built-in merge by model id, end-to-end `PI_NET_HOME` (spec 07), thinking payload wire tests (spec 08 §7c) | 40 passing |
 
 Packaging/CI automation lives in the repo (Stage 8, see below); the product
 features (specs 01–08) are complete.
@@ -182,8 +182,9 @@ and `--thinking <level>`; renderer dims thinking deltas. Tests:
 `MessageNormalizer.ForProvider` wired through `ConvertToLlm` in the loop and
 `--agent` mode: thinking blocks are stripped from the LLM-bound copy for
 non-Anthropic targets, kept otherwise; the persisted session keeps the
-originals. `/model` picker (no argument) lists providers/models. Tests:
-`MessageNormalizerTests` (+5), 2 CLI handoff tests.
+originals. `/model` picker (no argument) lists providers/models and accepts a
+selection (number or `provider/id`; `/models` alias). Tests:
+`MessageNormalizerTests` (+5), 2 CLI handoff tests, 4 CLI picker tests.
 
 **7e — Image input — ✅ verified.**
 `@path.png` tokens expand to base64 `ImageContent` blocks (regex extraction,
@@ -215,8 +216,9 @@ per-RID self-contained binaries. Remaining: SBOM/signing decisions.
 
 ## Known issues / next steps
 
-1. **Stage 7 — Advanced Features** — ✅ complete (2026-10-16): 7a–7g verified,
-   396 tests passing. Remaining deferred items (documented, non-blocking):
+1. **Stage 7 — Advanced Features** — ✅ complete (7d picker selection completed
+   2026-10-17): 7a–7g verified, 401 tests passing. Remaining deferred items
+   (documented, non-blocking):
    - 7e — clipboard/paste image input (platform-dependent, optional per spec).
    - 7g — settings hot-reload during a running session (restart picks up
      changes).
@@ -234,7 +236,7 @@ per-RID self-contained binaries. Remaining: SBOM/signing decisions.
 
 ```bash
 dotnet build PiNet.slnx        # 0 warnings, 0 errors
-dotnet test PiNet.slnx         # 396/396 passing
+dotnet test PiNet.slnx         # 401/401 passing
 dotnet run --project src/PiNet.Cli -- --list-models
 dotnet run --project src/PiNet.Cli -- --provider faux --model faux-model -p "hi"
 dotnet pack src/PiNet.Cli/PiNet.Cli.csproj -c Release -o artifacts/packages

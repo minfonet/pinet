@@ -42,8 +42,8 @@ The original Pi project (TypeScript/Node.js) is structured as a monorepo with th
 | 8 — Polish, Packaging & CI | [DONE] packaging + CI workflow + `pinet update --self` verified locally; distribution from source (local pack + install scripts) |
 
 Verified baseline: `dotnet build PiNet.slnx` clean (0 warnings / 0 errors);
-`dotnet test PiNet.slnx` — 396 passing (40 Providers + 49 Permissions + 52
-AgentCore + 27 Sessions + 159 Cli + 69 Extensions).
+`dotnet test PiNet.slnx` — 401 passing (40 Providers + 49 Permissions + 52
+AgentCore + 27 Sessions + 164 Cli + 69 Extensions).
 
 ### Recommended implementation order (remaining work)
 
@@ -329,7 +329,8 @@ gateways); config guide in `docs/local-llms.md`.
     `max(estimate, LastPromptTokens)`
 - Cross-provider handoff (7d): ✅ verified
   - `/model <provider>/<id>` rebuilds the agent with current messages; `/model`
-    with no argument lists providers/models
+    with no argument lists providers/models and accepts a selection (number or
+    `provider/id`; `/models` alias)
   - `ConvertToLlm` wired to `MessageNormalizer.ForProvider`: content is
     normalized per target provider (`ThinkingContent` dropped for non-Anthropic
     targets), the persisted session keeps the originals
@@ -376,7 +377,7 @@ fully covered.
 | 2 | `AfterToolCall` mutation / termination hint | ✅ Done | `AgentHookTests.AfterToolCall_ReplacesResult_InEventAndContext`, `TerminateHint_OnOnlyResult_StopsLoopWithoutFollowUpTurn`, `TerminateHint_PartialInBatch_KeepsLooping` |
 | 3 | Session fork / clone and tree navigation | ✅ Done | `SessionTests.Fork_CopiesBranchTruncatedAtForkPoint_IndependentHistory`, `Clone_DuplicatesEntireTree_IndependentHistory`, `GetActiveBranch_RootToHead`, `JumpTo_TruncatesTail_HeadIsRewound` |
 | 3 | Auto-compact trigger on context overflow | ✅ Done | `ContextCompactorTests.BelowThreshold_NoSummarizerCall_NoCompaction` + `AboveThreshold_AutoCompacts` (+ `ContextWindowZero_AutoNoOp_ForceStillCompacts`) |
-| 4 | `/model` switch persists across turns | ✅ Done | `InteractiveLoopTests.Model_SwitchesProviderAndModel_ForSubsequentTurns`, `CompactThenModelSwitch_SummaryFoldsAcrossSwitch` |
+| 4 | `/model` switch persists across turns | ✅ Done | `InteractiveLoopTests.Model_SwitchesProviderAndModel_ForSubsequentTurns`, `CompactThenModelSwitch_SummaryFoldsAcrossSwitch`, `Model_NoArg_ListsNumberedModels_AndPicksByNumber` |
 | 4 | `/new` ephemeral session disables persistence | ✅ Done | `InteractiveLoopTests.NoSession_DisablesPersistenceEntirely`, `NewSession_DisablesPersistence_ForSubsequentTurns` |
 | 4 | Ctrl+C on empty prompt exits with code 0 | ✅ Done | `InteractiveLoopTests.CtrlC_OnEmptyPrompt_ExitsWithCodeZero` |
 | 5 | Malformed permission config produces startup error | ✅ Done | `ConfigTests.Load_MalformedProjectConfig_Throws_StartupError`, `Load_MalformedGlobalConfig_Throws_StartupError` |
@@ -390,7 +391,7 @@ fully covered.
 | 7b | Manual `/compact` persists summary and rewinds watermark | ✅ Done | `InteractiveLoopTests` `/compact` (4 tests) |
 | 7b | Usage tracking `LastUsage/TotalUsage` accumulation | ✅ Done | `UsageTrackingTests` (3 tests) |
 | 7c | Thinking levels end-to-end (payloads, capture, `/thinking`, `--thinking`) | ✅ Done | `ThinkingPayloadTests` (16), `ThinkingTests` (3), 4 CLI tests |
-| 7d | Cross-provider handoff (`ConvertToLlm` normalization, `/model` picker) | ✅ Done | `MessageNormalizerTests` (5), 2 CLI handoff tests |
+| 7d | Cross-provider handoff (`ConvertToLlm` normalization, `/model` picker) | ✅ Done | `MessageNormalizerTests` (5), 2 CLI handoff tests, 4 CLI picker tests |
 | 7e | Image input (`@image` expansion, vision guard) | ✅ Done | 3 CLI image tests |
 | 7f | Export/import (JSONL round-trip, HTML, malformed files) | ✅ Done | `SessionExportTests` (6), 5 CLI tests |
 | 7g | Settings (global/project merge, `/settings`, `PI_NET_HOME`) | ✅ Done | `SettingsTests` (19) |
@@ -512,6 +513,6 @@ reference `xunit` + `Microsoft.NET.Test.Sdk`.
 ---
 
 *Plan created: 2026-09-09*
-*Last updated: 2026-10-17 — real-LLM audit fixed tool calling for OpenAI-compatible and Anthropic providers (Start/Delta/End events), de-duplicated live agent rendering, made `--agent` win over `-p`; Windows packaging fixes (npm.cmd/PATHEXT resolution, read-only-safe deletes, `.git` no longer copied into packages) and smoke-script hardening (agent-mode LLM step, `PI_NET_PROVIDER`/`PI_NET_MODEL`, complete summary); 396 tests passing. Next: coverage measurement and SBOM/signing decisions; see `STATUS.md` and `TASKS.md`.*
+*Last updated: 2026-10-17 — real-LLM audit fixed tool calling for OpenAI-compatible and Anthropic providers (Start/Delta/End events), de-duplicated live agent rendering, made `--agent` win over `-p`; Windows packaging fixes (npm.cmd/PATHEXT resolution, read-only-safe deletes, `.git` no longer copied into packages) and smoke-script hardening (agent-mode LLM step, `PI_NET_PROVIDER`/`PI_NET_MODEL`, complete summary); `/model` picker now accepts a selection (number or `provider/id`), completing spec 08 §7d; 401 tests passing. Next: coverage measurement and SBOM/signing decisions; see `STATUS.md` and `TASKS.md`.*
 *Target: .NET 10 (preview → GA)*
 *Reference: https://github.com/earendil-works/pi*

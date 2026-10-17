@@ -55,3 +55,10 @@
   checklist and troubleshooting.
 - [x] **Graphify graph regenerated** for the current HEAD (`graph/`, gitignored
   local artifact; counts in `graph/GRAPH_REPORT.md`).
+
+## Done (2026-10-17)
+
+- [x] **`/model` picker accepts a selection** (completes spec 08 §7d) — `/model`
+  (or `/models`) with no argument lists numbered models and accepts a pick by
+  number or `provider/id`; `q` cancels, invalid numbers are rejected. 4 new
+  `InteractiveLoopTests` + parser alias test (401 tests total).

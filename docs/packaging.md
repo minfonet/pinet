@@ -12,7 +12,7 @@ Pi.NET ships three ways (there is **no NuGet.org publication**):
 
 ```bash
 dotnet build PiNet.slnx -c Release   # 0 warnings, 0 errors
-dotnet test PiNet.slnx -c Release    # 396 tests
+dotnet test PiNet.slnx -c Release    # 401 tests
 ```
 
 ## Package (global tool)

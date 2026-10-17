@@ -11,7 +11,7 @@ with **Spec-Driven Development** (spec first, then verify against the running CL
 |------|-------|
 | Stages | **1–8 implemented**; product features verified (specs 01–08, incl. 7a.2); packaging verified locally |
 | Build | `dotnet build PiNet.slnx` — clean (0 warnings, 0 errors) |
-| Tests | **396 passing** (see verification commands below) |
+| Tests | **401 passing** (see verification commands below) |
 | Distribution | From source: `dotnet pack` + local feed, `install.ps1`/`install.sh`, or self-contained per-RID binaries (`scripts/publish.ps1`); not published to NuGet.org |
 
 See [`STATUS.md`](STATUS.md), [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md)
@@ -237,7 +237,8 @@ or malformed file falls back to the built-ins with a warning. Full reference:
   loop or `--thinking <level>` per run. Mapped to OpenAI `reasoning_effort` and
   Anthropic `thinking.budget_tokens`; thinking deltas render dimmed and are
   persisted with the session.
-- **Cross-provider handoff** — `/model <provider>/<id>` (or `/model` to list)
+- **Cross-provider handoff** — `/model <provider>/<id>` (or `/model` to list
+  and pick, by number or `provider/id`)
   switches mid-session; history is normalized per target provider (thinking
   blocks are dropped for providers that cannot accept them, the session keeps
   them).
@@ -279,7 +280,7 @@ $env:OPENAI_API_KEY = "sk-..."; .\scripts\smoke-stage6.ps1 -OpenAiModel gpt-4o
 
 ```bash
 dotnet build PiNet.slnx        # 0 warnings, 0 errors
-dotnet test PiNet.slnx         # 396/396 passing
+dotnet test PiNet.slnx         # 401/401 passing
 dotnet run --project src/PiNet.Cli -- --list-models
 dotnet run --project src/PiNet.Cli -- --provider faux --model faux-model -p "hi"
 ```

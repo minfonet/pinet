@@ -85,7 +85,8 @@ Initial complete implementation: stages 1–8 of
   `reasoning_effort` and Anthropic `thinking.enabled` + `budget_tokens`
   (clamped below `max_tokens`); thinking deltas render dimmed and are persisted
   with the session.
-- **7d Cross-provider handoff** — `/model` switch (with picker listing) keeps the
+- **7d Cross-provider handoff** — `/model` switch (with picker: list +
+  selection) keeps the
   conversation coherent; `MessageNormalizer` (wired via `ConvertToLlm`) drops
   thinking blocks for target providers that cannot accept them while the
   persisted session keeps them.

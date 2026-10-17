@@ -46,7 +46,7 @@ public static class SlashCommandParser
             "new" => SlashCommandKind.NewSession,
             "resume" => SlashCommandKind.Resume,
             "fork" => SlashCommandKind.Fork,
-            "model" => SlashCommandKind.Model,
+            "model" or "models" => SlashCommandKind.Model,
             "trust" => SlashCommandKind.Trust,
             "compact" => SlashCommandKind.Compact,
             "settings" => SlashCommandKind.Settings,

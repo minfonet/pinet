@@ -152,7 +152,7 @@ Worth exercising by hand:
 | Steering | While a turn runs, type a message + **Enter** → queued for the next turn boundary (`(steering: …)`) |
 | Follow-up | **Alt+Enter** while a turn runs → queues a message that starts another turn |
 | Cancel | **Ctrl+C** cancels the running turn; empty prompt + Ctrl+C exits |
-| Model switch | `/model` to list, `/model anthropic/claude-sonnet-4-20250514` to hand off mid-session |
+| Model switch | `/model` to list and pick (number or `provider/id`), or `/model anthropic/claude-sonnet-4-20250514` directly, to hand off mid-session |
 | Thinking | `/thinking High` |
 | Compaction | `/compact` or `--compact` (auto) |
 | Images | `@photo.png` (vision models) |

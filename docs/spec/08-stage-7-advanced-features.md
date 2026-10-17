@@ -560,7 +560,7 @@ Implemented per §5. Verification summary:
 
 ### 7d — Cross-provider handoff
 
-- **Status:** DONE (2026-10-15)
+- **Status:** DONE (2026-10-15; picker selection completed 2026-10-17)
 
 Implemented per §6. Verification summary:
 
@@ -575,8 +575,10 @@ Implemented per §6. Verification summary:
     the OpenAi handoff test re-reads the session entries and asserts the
     original `ThinkingContent` entry is still persisted.
   - AC7d.3 (picker selects a valid model) —
-    `InteractiveLoopTests` `/model` listing + switch tests
-    (`CompactThenModelSwitch_SummaryFoldsAcrossSwitch`,
+    `InteractiveLoopTests.Model_NoArg_ListsNumberedModels_AndPicksByNumber`,
+    `Model_Picker_AcceptsTypedProviderId_AndModelsAlias`,
+    `Model_Picker_Cancel_KeepsCurrentModel`, `Model_Picker_RejectsInvalidNumber`
+    (+ `/model` switch tests: `CompactThenModelSwitch_SummaryFoldsAcrossSwitch`,
     `Thinking_Level_Survives_ModelSwitch`).
   - Unit coverage — `AgentCore.Tests/MessageNormalizerTests` (same-instance
     pass-through for Anthropic and for histories without thinking; thinking
@@ -586,7 +588,9 @@ Implemented per §6. Verification summary:
   (`ForProvider(messages, providerId)`).
 - **Code modified:** `InteractiveLoop.RebuildAgent` and
   `Program.AgentModeAsync` wire `ConvertToLlm = msgs =>
-  MessageNormalizer.ForProvider(msgs, providerId)`.
+  MessageNormalizer.ForProvider(msgs, providerId)`; the model command
+  (`InteractiveLoop.SwitchModelAsync` — numbered list, selection by number or
+  `provider/id`) and `SlashCommandParser` (`/models` alias).
 - **Divergences from spec (intentional):** the target "accepts thinking
   history" test is the provider id containing `anthropic` (built-ins and
   anthropic-compatible custom providers); Anthropic requests currently do not

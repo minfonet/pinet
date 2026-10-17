@@ -366,7 +366,7 @@ public sealed class InteractiveLoop
                 await ForkSessionAsync(command.Arg, hostCt);
                 return true;
             case SlashCommandKind.Model:
-                SwitchModel(command.Arg);
+                await SwitchModelAsync(command.Arg);
                 return true;
             case SlashCommandKind.Trust:
                 await TrustProjectAsync(command.Arg, hostCt);
@@ -680,28 +680,47 @@ public sealed class InteractiveLoop
         }
     }
 
-    private void SwitchModel(string? arg)
+    private async Task SwitchModelAsync(string? arg)
     {
         var trimmed = (arg ?? string.Empty).Trim();
         if (string.IsNullOrWhiteSpace(trimmed))
         {
-            // Show available models grouped by provider
-            var models = _chat.GetModels();
-            var grouped = models.GroupBy(m => m.Provider, StringComparer.OrdinalIgnoreCase).OrderBy(g => g.Key);
-            _out.WriteLine("Available models (/model provider/id):");
-            foreach (var g in grouped)
+            // Model picker: numbered list, then accept a selection (number or provider/id).
+            var models = _chat.GetModels()
+                .OrderBy(m => m.Provider, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(m => m.Id, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            if (models.Count == 0)
             {
-                _out.WriteLine($"  [{g.Key}]");
-                foreach (var m in g.OrderBy(x => x.Id, StringComparer.OrdinalIgnoreCase))
-                    _out.WriteLine($"    {m.Id}  ({m.Name})");
+                _out.WriteLine("No models available.", ConsoleColor.DarkGray);
+                return;
             }
-            return;
+
+            _out.WriteLine("Available models:");
+            for (var i = 0; i < models.Count; i++)
+                _out.WriteLine($"  {i + 1}. {models[i].Provider}/{models[i].Id}  ({models[i].Name})");
+
+            var picked = await ReadLineAsync($"pick (1-{models.Count} or provider/id) [q to cancel] > ");
+            if (picked is null || picked.Trim().ToLowerInvariant() == "q")
+                return;
+
+            trimmed = picked.Trim();
+            if (int.TryParse(trimmed, out var index))
+            {
+                if (index < 1 || index > models.Count)
+                {
+                    _out.WriteLine($"Invalid selection: {trimmed}", ConsoleColor.Red);
+                    return;
+                }
+
+                trimmed = $"{models[index - 1].Provider}/{models[index - 1].Id}";
+            }
         }
 
         var parts = trimmed.Split('/', StringSplitOptions.RemoveEmptyEntries);
         if (parts.Length != 2)
         {
-            _out.WriteLine($"Usage: /model <provider>/<id> (or /model to list)", ConsoleColor.Red);
+            _out.WriteLine("Usage: /model <provider>/<id> (or /model to list and pick)", ConsoleColor.Red);
             return;
         }
 
@@ -958,7 +977,7 @@ public sealed class InteractiveLoop
                 "new" => "/new  — start a fresh ephemeral session",
                 "resume" => "/resume [id|path]  — resume a saved session",
                 "fork" => "/fork <id|path>  — fork a session and continue it",
-                "model" => "/model <provider>/<id>  — switch models",
+                "model" or "models" => "/model [provider/id]  — list and pick a model, or switch directly",
                 "trust" => "/trust [off]  — trust this project (bash without prompt) / untrust",
                 "compact" => "/compact [instructions]  — manually compact the session context",
                 "thinking" => "/thinking <level>  — set the reasoning level (Off/Minimal/Low/Medium/High/XHigh/Max)",
@@ -977,7 +996,7 @@ public sealed class InteractiveLoop
         _out.WriteLine("  /new                   start a fresh ephemeral session");
         _out.WriteLine("  /resume [id|path]      resume a saved session");
         _out.WriteLine("  /fork <id|path>        fork a session and continue it");
-        _out.WriteLine("  /model <provider>/<id> switch models");
+        _out.WriteLine("  /model [provider/id]   list and pick a model (alias: /models)");
         _out.WriteLine("  /trust [off]           trust this project (bash without prompt) / untrust");
         _out.WriteLine("  /compact [instructions] manually compact the session context");
         _out.WriteLine("  /thinking <level>      set the reasoning level (Off/Minimal/Low/Medium/High/XHigh/Max)");

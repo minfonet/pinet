@@ -16,6 +16,7 @@ public class SlashCommandParserTests
     [InlineData("/resume ywbri5s32t5gd", SlashCommandKind.Resume, "ywbri5s32t5gd")]
     [InlineData("/fork abc123", SlashCommandKind.Fork, "abc123")]
     [InlineData("/model faux/faux-model", SlashCommandKind.Model, "faux/faux-model")]
+    [InlineData("/models", SlashCommandKind.Model, null)]
     public void Parse_MapsKnownCommands(string line, SlashCommandKind expectedKind, string? expectedArg)
     {
         var command = SlashCommandParser.Parse(line);
