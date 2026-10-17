@@ -6,15 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Progress per stage (with verification logs) lives in
 [`STATUS.md`](STATUS.md) and [`docs/spec/`](docs/spec/); this file is the
-release-notes style view.
-
-## [Unreleased]
-
-Nothing yet. The first release is `0.1.0` below; the package is packed and
-installed locally (tool + self-contained binaries verified). Pi.NET is
-**not published to NuGet.org** — releases are distributed as GitHub Release
-assets (per-RID binaries + the packed global-tool `.nupkg`). See “Deferred” at
-the bottom for documented items that will land in later releases.
+chronological change record.
 
 ## [0.1.0] — 2026-10-16
 
@@ -108,20 +100,18 @@ Initial complete implementation: stages 1–8 of
   `<cwd>/.pi/settings.json` (project wins), `/settings` view/edit, CLI flag
   precedence.
 
-### Stage 8 — Packaging, CI & release
+### Stage 8 — Packaging & CI
 
 - `dotnet tool` packaging: `PackageId=PiNet`, `ToolCommandName=pinet`,
   `AssemblyName=pinet`, README packed; install scripts (`install.ps1`,
   `install.sh`).
 - `pinet update --self` (delegates to `dotnet tool update -g PiNet` with clear
   guidance when not installed as a global tool).
-- CI workflow (build + test) and release workflow (tag `v*` → tests, pack with
-  the tag version, self-contained `win-x64`/`linux-x64`/`osx-arm64` single-file
-  binaries, GitHub release assets: tool `.nupkg` + per-RID zips);
-  `scripts/publish.ps1` for local per-RID publishes.
+- CI workflow (build + test); `scripts/publish.ps1` for local per-RID
+  self-contained publishes.
 - Distribution decision: **no NuGet.org publication** — install from the
-  packed `.nupkg` (local feed or GitHub Release asset) or use a per-RID
-  binary; `install.ps1`/`install.sh` now install from a local package feed.
+  packed `.nupkg` (local feed) or use a per-RID binary;
+  `install.ps1`/`install.sh` install from a local package feed.
 
 ### Documentation
 

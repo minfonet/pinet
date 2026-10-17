@@ -1,4 +1,4 @@
-# Stage 8 - Packaging / CI / Release (Implementation Notes)
+# Stage 8 - Packaging / CI (Implementation Notes)
 
 Delivered:
 
@@ -14,14 +14,10 @@ Delivered:
   guidance when PiNet is not a global tool. `pinet update [name]` still updates
   extension packages.
 - **CI** (`.github/workflows/ci.yml`): restore + build + test on push/PR (ubuntu).
-- **Release** (`.github/workflows/release.yml`): on `v*` tags (or manual):
-  tests, packs the tool with the tag as version, publishes self-contained
-  single-file binaries for `win-x64`/`linux-x64`/`osx-arm64` (zipped), and
-  creates the GitHub release with the `.nupkg` + per-RID `.zip` assets via
-  `gh release create`. No NuGet.org push (decision 2026-10-16).
-- **Local publish helper**: `scripts/publish.ps1` (`-Rids`, `-Version`).
-- **Docs**: `docs/packaging.md` (build/pack/install/update/self-contained/
-  release + runtime config layout).
+- **Local publish helper**: `scripts/publish.ps1` (`-Rids`, `-Version`) — builds
+  self-contained single-file binaries per RID.
+- **Docs**: `docs/packaging.md` (build/pack/install/update/self-contained
+  + runtime config layout).
 
 Verified locally (Windows, .NET 10):
 
@@ -38,7 +34,7 @@ Bug fixed along the way: `Program` sliced the args before dispatching to
 Regression covered by `PackageManagerCliTests.Program_DispatchesPackageSubcommands_WithFullArgs`
 (`InternalsVisibleTo PiNet.Cli.Tests` added; `Program.RunAsync` is now internal).
 
-Decided (2026-10-16): **no NuGet.org publication** — distribution is via
-GitHub Release assets (per-RID zips + tool `.nupkg`) and local packs.
+Decided (2026-10-16): **no NuGet.org publication** — distribution is from
+local packs (`dotnet pack` + local feed) and per-RID self-contained publishes.
 Still open (future): SBOM generation, telemetry (decided against for now:
 zero-dependency posture), signing.

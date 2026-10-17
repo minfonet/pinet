@@ -39,7 +39,7 @@ The original Pi project (TypeScript/Node.js) is structured as a monorepo with th
 | 5 — Permissions & Tool Security | [DONE] verified (spec `docs/spec/05`) |
 | 6 — Extensions & Skills | [DONE] verified (spec `docs/spec/06`) |
 | 7 — Advanced Features | [DONE] verified (spec `docs/spec/08`, incl. 7a.2) |
-| 8 — Polish, Packaging & Release | [DONE] packaging + release workflow + `pinet update --self` verified locally; distribution via GitHub Release assets (NuGet.org publication intentionally skipped) |
+| 8 — Polish, Packaging & CI | [DONE] packaging + CI workflow + `pinet update --self` verified locally; distribution from source (local pack + install scripts) |
 
 Verified baseline: `dotnet build PiNet.slnx` clean (0 warnings / 0 errors);
 `dotnet test PiNet.slnx` — 396 passing (40 Providers + 49 Permissions + 52
@@ -47,15 +47,11 @@ AgentCore + 27 Sessions + 159 Cli + 69 Extensions).
 
 ### Recommended implementation order (remaining work)
 
-1. **Cut the first tagged release** — configure the GitHub remote, push `main`
-   and a `v0.1.0` tag so the release workflow builds the per-RID binaries and
-   attaches them plus the tool `.nupkg` to the GitHub Release; NuGet.org
-   publication is intentionally skipped (install from a local feed or use a
-   per-RID binary).
-2. **Deferred** — 7e clipboard images; 7g settings hot-reload; network smoke
-   tests (Stage 6 `install npm:`/`git:` + extension tool invoked by a real LLM);
-   SBOM/signing decisions. (7a.2 in-flight keystroke capture is done:
-   `SteeringCaptureTests`, spec 08 §3.3.)
+1. **Coverage measurement** — measure `AgentCore`/`Sessions`/`Providers`
+   against the Stage 8 >80% target, or adjust the criterion in this plan.
+2. **Deferred** — 7e clipboard images; 7g settings hot-reload; SBOM/signing
+   decisions. (7a.2 in-flight keystroke capture is done: `SteeringCaptureTests`,
+   spec 08 §3.3. Stage 6 network smoke tests ran green 2026-10-16.)
 
 ---
 
@@ -403,9 +399,9 @@ Remaining gaps (tracked in [`TASKS.md`](../TASKS.md)): coverage measurement
 against the Stage 8 >80% target; 7e clipboard images; 7g settings hot-reload;
 Stage 6 network smoke tests.
 
-## Stage 8 — Polish, Packaging & Release — [DONE] (verified locally)
+## Stage 8 — Polish, Packaging & CI — [DONE] (verified locally)
 
-**Goal:** Production-ready release with documentation and CI/CD.
+**Goal:** Production-ready packaging with documentation and CI/CD.
 
 ### Deliverables
 
@@ -413,24 +409,23 @@ Stage 6 network smoke tests.
   `AssemblyName=pinet`, README in package, `install.ps1`/`install.sh` — ✅ done
 - `pinet update --self` (delegates to `dotnet tool update -g PiNet`) — ✅ done
 - Build & CI: `.github/workflows/ci.yml` builds and tests — ✅ done
-- Release workflow (`.github/workflows/release.yml`): tag → tests + pack +
-  self-contained per-RID binaries + GitHub release assets (tool `.nupkg` +
-  per-RID zips) — ✅ done, verified locally (pack → local feed → tool install →
-  run; `win-x64` self-contained → run)
-- Documentation: `docs/packaging.md` (build/pack/install/self-contained/release)
+- Self-contained per-RID binaries via `scripts/publish.ps1` — ✅ done,
+  verified locally (pack → local feed → tool install → run; `win-x64`
+  self-contained → run)
+- Documentation: `docs/packaging.md` (build/pack/install/self-contained)
   — ✅ done
-- Remaining: GitHub remote + first tagged release; SBOM/signing decisions;
-  telemetry decided against (zero-dependency posture)
+- Remaining: SBOM/signing decisions; telemetry decided against (zero-dependency
+  posture)
 
 ### Full scope
 
 - CLI packaging:
-  - `dotnet tool` packaging (`dotnet pack`; install from a local feed or the
-    `.nupkg` attached to a GitHub Release — no NuGet.org publication)
+  - `dotnet tool` packaging (`dotnet pack`; install from a local feed — no
+    NuGet.org publication)
   - Self-contained single-file executables per RID (`dotnet publish -r win-x64`, `linux-x64`, `osx-arm64`)
   - Install script (`install.sh` / `install.ps1`)
 - Build & CI:
-  - GitHub Actions: build, test, lint, pack, publish
+  - GitHub Actions: build, test, pack
   - Unit tests: >80% coverage on `AgentCore`, `Sessions`, `Providers`
   - Integration tests: mock LLM provider for deterministic agent loop testing
   - E2E tests: real provider calls (gated by API key availability)
@@ -445,15 +440,15 @@ Stage 6 network smoke tests.
   - Pinned dependency versions in `.csproj`
   - NuGet audit enabled
   - SBOM generation
-- Release process:
-  - Semantic versioning
-  - GitHub Releases with binaries per platform
+- Distribution:
+  - Semantic versioning (version in `PiNet.Cli.csproj`)
+  - Per-RID self-contained binaries via `scripts/publish.ps1`
   - `pinet update --self` for self-update
 
 ### Acceptance Criteria
 
-- `dotnet tool install -g PiNet --add-source <feed>` works (local pack or the
-  GitHub Release `.nupkg`) and `pinet` is available on PATH
+- `dotnet tool install -g PiNet --add-source <feed>` works (local pack) and
+  `pinet` is available on PATH
 - `pinet -p "Hello"` works on Windows, Linux, and macOS
 - All tests pass in CI
 - README has working quick-start instructions
@@ -517,6 +512,6 @@ reference `xunit` + `Microsoft.NET.Test.Sdk`.
 ---
 
 *Plan created: 2026-09-09*
-*Last updated: 2026-10-16 — real-LLM audit fixed tool calling for OpenAI-compatible and Anthropic providers (Start/Delta/End events), de-duplicated live agent rendering, made `--agent` win over `-p`; Windows packaging fixes (npm.cmd/PATHEXT resolution, read-only-safe deletes, `.git` no longer copied into packages) and smoke-script hardening (agent-mode LLM step, `PI_NET_PROVIDER`/`PI_NET_MODEL`, complete summary); 396 tests passing. Next: GitHub remote + first tagged release; see `STATUS.md` and `TASKS.md`.*
+*Last updated: 2026-10-17 — real-LLM audit fixed tool calling for OpenAI-compatible and Anthropic providers (Start/Delta/End events), de-duplicated live agent rendering, made `--agent` win over `-p`; Windows packaging fixes (npm.cmd/PATHEXT resolution, read-only-safe deletes, `.git` no longer copied into packages) and smoke-script hardening (agent-mode LLM step, `PI_NET_PROVIDER`/`PI_NET_MODEL`, complete summary); 396 tests passing. Next: coverage measurement and SBOM/signing decisions; see `STATUS.md` and `TASKS.md`.*
 *Target: .NET 10 (preview → GA)*
 *Reference: https://github.com/earendil-works/pi*

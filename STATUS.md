@@ -10,9 +10,9 @@
 |------|-------|
 | Solution | `PiNet.slnx` — builds clean (0 warnings, 0 errors) |
 | Tests | **396 passing** (40 `PiNet.Providers.Tests` + 49 `PiNet.Permissions.Tests` + 52 `PiNet.AgentCore.Tests` + 27 `PiNet.Sessions.Tests` + 159 `PiNet.Cli.Tests` + 69 `PiNet.Extensions.Tests`), 0 failing |
-| Current stage | **Stage 8 — Packaging / CI / Release** — packaging + release workflow + `pinet update --self` implemented and verified locally; NuGet.org publication intentionally skipped (distribution via GitHub Release assets + local pack) |
+| Current stage | **Stage 8 — Packaging / CI** — packaging + CI workflow + `pinet update --self` implemented and verified locally; distribution from source (local pack + install scripts + per-RID publish) |
 | Stages complete | 1, 2, 3, 4, 5, 6 + spec 07 + spec 08 (incl. 7a.2; specs verified against the running CLI) |
-| Packaging | `dotnet pack` → `PiNet.0.1.0.nupkg` verified (tool install + run from a local feed); self-contained `win-x64` publish verified; CI + release workflows committed; `scripts/publish.ps1` for local per-RID publishes |
+| Packaging | `dotnet pack` → `PiNet.0.1.0.nupkg` verified (tool install + run from a local feed); self-contained `win-x64` publish verified; CI workflow committed; `scripts/publish.ps1` for local per-RID publishes |
 
 ## Projects
 
@@ -32,7 +32,7 @@
 | `PiNet.Extensions.Tests` | Skill frontmatter/registry/catalog, template expander/registry, context files + system prompt builder, tar extractor, package manager, extension host (incl. real SDK compile + cache reuse) | 64 passing |
 | `PiNet.Providers.Tests` | `models.json` parsing + warnings, `ConfigCredentialResolver` (`$ENV`/literal/fallback), custom provider registration (OpenAI/Anthropic), built-in merge by model id, end-to-end `PI_NET_HOME` (spec 07), thinking payload wire tests (spec 08 §7c) | 34 passing |
 
-Packaging/release automation lives in the repo (Stage 8, see below); the product
+Packaging/CI automation lives in the repo (Stage 8, see below); the product
 features (specs 01–08) are complete.
 
 ## Stage-by-stage
@@ -204,17 +204,14 @@ project wins, malformed warns), `/settings` view/edit, CLI flag precedence,
 `SessionManager` root honors `PI_NET_HOME`. Hot-reload during a session remains
 out of scope. Tests: 19 `SettingsTests`.
 
-### Stage 8 — Packaging / CI / Release — 🔄 mostly done, verified locally
+### Stage 8 — Packaging / CI — ✅ done, verified locally
 Implemented: global-tool packaging (`PackageId=PiNet`, `AssemblyName=pinet`,
 README in package), install scripts (local package feed), `pinet update --self`,
-CI workflow, **release workflow** (`v*` tags → tests + pack + self-contained
-`win-x64`/`linux-x64`/`osx-arm64` binaries + GitHub release assets: tool
-`.nupkg` + per-RID zips), `scripts/publish.ps1`, `docs/packaging.md`. Locally
-verified: pack → tool install from a local feed → run; `win-x64`
+CI workflow, `scripts/publish.ps1` (local per-RID publishes), `docs/packaging.md`.
+Locally verified: pack → tool install from a local feed → run; `win-x64`
 self-contained `pinet.exe` → run; `update --self` failure path prints guidance.
-Decision (2026-10-16): **no NuGet.org publication** — releases are distributed
-as GitHub Release assets and `dotnet pack` output. Remaining: configure the
-GitHub remote and cut the first tagged release; SBOM/signing decisions.
+Distribution is from source: `dotnet pack` + local feed, the install scripts, or
+per-RID self-contained binaries. Remaining: SBOM/signing decisions.
 
 ## Known issues / next steps
 
@@ -224,10 +221,8 @@ GitHub remote and cut the first tagged release; SBOM/signing decisions.
    - 7g — settings hot-reload during a running session (restart picks up
      changes).
 
-2. **Stage 8 — Packaging / CI / Release** — packaging and release automation
-   verified locally; remaining: configure the GitHub remote and cut the first
-   tagged release (NuGet.org publication intentionally skipped — Release
-   assets carry the binaries and the tool package), decide on SBOM/telemetry
+2. **Stage 8 — Packaging / CI** — packaging verified locally (tool + per-RID
+   binaries) with the CI workflow in place; remaining: decide on SBOM/signing
    (currently none, per the zero-dependency posture).
 
 3. **Stage 6 network smoke tests** — ✅ ran green end-to-end (2026-10-16):

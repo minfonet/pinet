@@ -1,11 +1,11 @@
-# Packaging & Release
+# Packaging
 
 Pi.NET ships three ways (there is **no NuGet.org publication**):
 
 1. **Global .NET tool** installed from a local package feed (`dotnet pack` +
    `dotnet tool install -g PiNet --add-source …`) — the default install.
 2. **Self-contained single-file binaries** per RID (no .NET runtime needed),
-   attached to GitHub Releases.
+   produced locally (`scripts/publish.ps1`).
 3. **From source** (`dotnet build` / `dotnet run`).
 
 ## Build
@@ -28,8 +28,8 @@ Package metadata lives in `src/PiNet.Cli/PiNet.Cli.csproj` (`PackageId=PiNet`,
 ### Install / update
 
 The install scripts pack Pi.NET from source when needed and install from a
-local feed. Pass an existing feed directory (for example one holding the
-`.nupkg` downloaded from a GitHub Release) to skip the pack:
+local feed. Pass an existing feed directory (for example one holding a
+`.nupkg` produced by `dotnet pack`) to skip the pack:
 
 ```powershell
 .\install.ps1                       # Windows (packs from source)
@@ -72,25 +72,14 @@ dotnet publish src/PiNet.Cli/PiNet.Cli.csproj -c Release \
   -o artifacts/publish/win-x64
 ```
 
-## CI / Release
+## CI
 
 - `.github/workflows/ci.yml` — build + test on push/PR (ubuntu).
-- `.github/workflows/release.yml` — on `v*` tags (or manual dispatch):
-  1. runs the test suite and packs the global tool (version from the tag),
-  2. publishes self-contained binaries for `win-x64`, `linux-x64`, `osx-arm64`
-     and zips them,
-  3. creates the GitHub release with the `.nupkg` and per-RID `.zip` assets
-     (`gh release create`, release notes auto-generated) — no NuGet.org push.
 
-### Cutting a release
+### Versions
 
-```bash
-git tag v0.2.0
-git push origin v0.2.0
-```
-
-No version is committed in advance: the workflow stamps the tag into the pack
-and publish commands.
+The package version lives in `src/PiNet.Cli/PiNet.Cli.csproj` (`Version`);
+override it per pack/publish with `-p:Version=x.y.z`.
 
 ## Configuration layout (runtime)
 

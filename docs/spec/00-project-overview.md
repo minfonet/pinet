@@ -80,7 +80,7 @@ features — those are extension points.
 | 6 | Extension System & Skills | Verified (see [06-stage-6-extensions-skills.md](06-stage-6-extensions-skills.md)) |
 | — | Local & Custom LLM Providers (spec 07) | Verified (see [07-local-llm-providers.md](07-local-llm-providers.md)) |
 | 7 | Advanced Features | Verified (see [08-stage-7-advanced-features.md](08-stage-7-advanced-features.md)) |
-| 8 | Polish, Packaging & Release | Done — packaging/release verified locally; distribution via GitHub Release assets (NuGet.org publication intentionally skipped) |
+| 8 | Polish, Packaging & CI | Done — packaging verified locally (global tool + per-RID binaries); CI workflow in place |
 
 ## 6. Conventions
 

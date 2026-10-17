@@ -9,10 +9,10 @@ with **Spec-Driven Development** (spec first, then verify against the running CL
 
 | Item | State |
 |------|-------|
-| Stages | **1–8 implemented**; product features verified (specs 01–08, incl. 7a.2); packaging/release verified locally |
+| Stages | **1–8 implemented**; product features verified (specs 01–08, incl. 7a.2); packaging verified locally |
 | Build | `dotnet build PiNet.slnx` — clean (0 warnings, 0 errors) |
 | Tests | **396 passing** (see verification commands below) |
-| Next | Configure the GitHub remote and cut the first `v0.1.0` release (per-RID binaries + tool package as Release assets; NuGet.org publication intentionally skipped) |
+| Distribution | From source: `dotnet pack` + local feed, `install.ps1`/`install.sh`, or self-contained per-RID binaries (`scripts/publish.ps1`); not published to NuGet.org |
 
 See [`STATUS.md`](STATUS.md), [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md)
 and [`CHANGELOG.md`](CHANGELOG.md) for the full stage-by-stage record.
@@ -35,8 +35,7 @@ dotnet run --project src/PiNet.Cli -- -i
 ### Install as a global tool (from source)
 
 Pi.NET is **not published to NuGet.org**. Pack it locally and install from that
-feed (or use a per-RID binary from GitHub Releases / `install.ps1` /
-`install.sh`):
+feed (or use `install.ps1` / `install.sh`, which pack and install in one step):
 
 ```bash
 dotnet pack src/PiNet.Cli/PiNet.Cli.csproj -c Release -o artifacts/packages
@@ -63,7 +62,7 @@ dotnet run --project src/PiNet.Cli -- --provider openai --model gpt-4o -p "hello
 | 5 | Permissions & tool security | Rule resolver (safety floor, deny-sticky), `/trust`, `--approve`, path globs |
 | 6 | **Extensions & Skills** | Extension host, skills, prompt templates, context files, package manager |
 | 7 | **Advanced Features** | Steering/follow-up (incl. in-flight typing → steer/follow-up), context compaction (`/compact`), thinking levels (`/thinking`), cross-provider handoff, `@image` input, `/export`+`/import`, settings |
-| 8 | Packaging & Release | `dotnet tool` pack + install scripts, self-contained per-RID binaries, CI + release workflows, `pinet update --self` |
+| 8 | Packaging & CI | `dotnet tool` pack + install scripts, self-contained per-RID binaries, CI workflow, `pinet update --self` |
 
 Beyond the staged work, [spec 07](docs/spec/07-local-llm-providers.md) adds
 Pi-compatible local/custom LLM providers (`~/.pinet/models.json`).

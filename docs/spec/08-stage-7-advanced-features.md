@@ -38,7 +38,7 @@ Out of scope (explicit divergences / later stages):
 
 - Themes, mouse support, multi-pane full-screen TUI (Stage 4 out-of-scope).
 - `--mode json` / `--mode rpc` machine modes (not planned for this stage).
-- Telemetry, packaging, CI/release (Stage 8).
+- Telemetry and packaging/CI (Stage 8).
 - Multi-agent orchestration (project non-goal).
 
 ## 3. Sub-stage 7a — Steering & follow-up

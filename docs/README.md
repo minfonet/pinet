@@ -59,7 +59,7 @@ This folder contains all project documentation, written using the **Spec-Driven 
 |-----|-------|
 | [`../STATUS.md`](../STATUS.md) | Current status, test counts and stage-by-stage record |
 | [`../IMPLEMENTATION_PLAN.md`](../IMPLEMENTATION_PLAN.md) | Full stage plan and remaining/deferred work |
-| [`../CHANGELOG.md`](../CHANGELOG.md) | Release-notes style history of every stage |
+| [`../CHANGELOG.md`](../CHANGELOG.md) | Chronological history of every stage |
 | [implementation/](implementation/) | Implementation notes per sub-stage (07c–08) |
 
 ### Scripts
