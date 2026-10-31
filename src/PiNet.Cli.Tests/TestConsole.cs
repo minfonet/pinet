@@ -34,6 +34,8 @@ public static class Keys
     public static ConsoleKeyInfo CtrlC => Ctrl(ConsoleKey.C);
     public static ConsoleKeyInfo Up => Key(ConsoleKey.UpArrow);
     public static ConsoleKeyInfo Down => Key(ConsoleKey.DownArrow);
+    public static ConsoleKeyInfo Escape => Key(ConsoleKey.Escape);
+    public static ConsoleKeyInfo Backspace => Key(ConsoleKey.Backspace);
 }
 
 public sealed class ScriptedInput : IConsoleInput

@@ -633,16 +633,32 @@ public sealed class InteractiveLoop
                 return;
             }
 
+            _out.WriteLine("Sessions:");
             for (var i = 0; i < sessions.Count; i++)
                 _out.WriteLine($"  {i + 1}. {sessions[i].SessionId}  ({sessions[i].EntryCount} entries, {AgeOf(sessions[i].LastWriteUtc)})");
 
-            var picked = await ReadLineAsync($"pick (1-{sessions.Count} or id) [q to cancel] > ");
+            // Live picker: ↑/↓ highlight (numbered list is printed above) and the
+            // typed path (number or id) both resolve through the same value.
+            var picked = ListPicker.Pick(
+                _input,
+                _out,
+                [.. sessions.Select(s => new ListPickerItem(
+                    $"{s.SessionId}  ({s.EntryCount} entries, {AgeOf(s.LastWriteUtc)})",
+                    s.SessionId))]);
             if (picked is null || picked.Trim().ToLowerInvariant() == "q")
                 return;
 
             var selection = picked.Trim();
-            if (int.TryParse(selection, out var index) && index >= 1 && index <= sessions.Count)
+            if (int.TryParse(selection, out var index))
+            {
+                if (index < 1 || index > sessions.Count)
+                {
+                    _out.WriteLine($"Invalid selection: {selection}", ConsoleColor.Red);
+                    return;
+                }
+
                 selection = sessions[index - 1].SessionId;
+            }
             arg = selection;
         }
 
@@ -685,7 +701,9 @@ public sealed class InteractiveLoop
         var trimmed = (arg ?? string.Empty).Trim();
         if (string.IsNullOrWhiteSpace(trimmed))
         {
-            // Model picker: numbered list, then accept a selection (number or provider/id).
+            // Model picker: numbered list; the live picker supports ↑/↓ (Enter
+            // picks the highlighted row, default = the active model) while the
+            // typed path (number or provider/id, 'q'/Esc to cancel) is kept.
             var models = _chat.GetModels()
                 .OrderBy(m => m.Provider, StringComparer.OrdinalIgnoreCase)
                 .ThenBy(m => m.Id, StringComparer.OrdinalIgnoreCase)
@@ -700,7 +718,14 @@ public sealed class InteractiveLoop
             for (var i = 0; i < models.Count; i++)
                 _out.WriteLine($"  {i + 1}. {models[i].Provider}/{models[i].Id}  ({models[i].Name})");
 
-            var picked = await ReadLineAsync($"pick (1-{models.Count} or provider/id) [q to cancel] > ");
+            var start = models.FindIndex(m =>
+                string.Equals(m.Provider, _provider, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(m.Id, _model, StringComparison.OrdinalIgnoreCase));
+            var picked = ListPicker.Pick(
+                _input,
+                _out,
+                [.. models.Select(m => new ListPickerItem($"{m.Provider}/{m.Id}  ({m.Name})", $"{m.Provider}/{m.Id}"))],
+                start);
             if (picked is null || picked.Trim().ToLowerInvariant() == "q")
                 return;
 
@@ -977,7 +1002,7 @@ public sealed class InteractiveLoop
                 "new" => "/new  — start a fresh ephemeral session",
                 "resume" => "/resume [id|path]  — resume a saved session",
                 "fork" => "/fork <id|path>  — fork a session and continue it",
-                "model" or "models" => "/model [provider/id]  — list and pick a model, or switch directly",
+                "model" or "models" => "/model [provider/id]  — pick a model (↑/↓ in the picker, or type #/provider-id), or switch directly",
                 "trust" => "/trust [off]  — trust this project (bash without prompt) / untrust",
                 "compact" => "/compact [instructions]  — manually compact the session context",
                 "thinking" => "/thinking <level>  — set the reasoning level (Off/Minimal/Low/Medium/High/XHigh/Max)",
@@ -996,7 +1021,7 @@ public sealed class InteractiveLoop
         _out.WriteLine("  /new                   start a fresh ephemeral session");
         _out.WriteLine("  /resume [id|path]      resume a saved session");
         _out.WriteLine("  /fork <id|path>        fork a session and continue it");
-        _out.WriteLine("  /model [provider/id]   list and pick a model (alias: /models)");
+        _out.WriteLine("  /model [provider/id]   list models and pick with ↑/↓ or #/id (alias: /models)");
         _out.WriteLine("  /trust [off]           trust this project (bash without prompt) / untrust");
         _out.WriteLine("  /compact [instructions] manually compact the session context");
         _out.WriteLine("  /thinking <level>      set the reasoning level (Off/Minimal/Low/Medium/High/XHigh/Max)");

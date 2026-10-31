@@ -42,8 +42,8 @@ The original Pi project (TypeScript/Node.js) is structured as a monorepo with th
 | 8 — Polish, Packaging & CI | [DONE] packaging + CI workflow + `pinet update --self` verified locally; distribution from source (local pack + install scripts) |
 
 Verified baseline: `dotnet build PiNet.slnx` clean (0 warnings / 0 errors);
-`dotnet test PiNet.slnx` — 401 passing (40 Providers + 49 Permissions + 52
-AgentCore + 27 Sessions + 164 Cli + 69 Extensions).
+`dotnet test PiNet.slnx` — 406 passing (40 Providers + 49 Permissions + 52
+AgentCore + 27 Sessions + 169 Cli + 69 Extensions).
 
 ### Recommended implementation order (remaining work)
 
@@ -329,8 +329,9 @@ gateways); config guide in `docs/local-llms.md`.
     `max(estimate, LastPromptTokens)`
 - Cross-provider handoff (7d): ✅ verified
   - `/model <provider>/<id>` rebuilds the agent with current messages; `/model`
-    with no argument lists providers/models and accepts a selection (number or
-    `provider/id`; `/models` alias)
+    with no argument lists providers/models and accepts a selection (arrow-key
+    highlight — starts on the active model — or number or `provider/id`;
+    `/models` alias)
   - `ConvertToLlm` wired to `MessageNormalizer.ForProvider`: content is
     normalized per target provider (`ThinkingContent` dropped for non-Anthropic
     targets), the persisted session keeps the originals
@@ -513,6 +514,6 @@ reference `xunit` + `Microsoft.NET.Test.Sdk`.
 ---
 
 *Plan created: 2026-09-09*
-*Last updated: 2026-10-17 — real-LLM audit fixed tool calling for OpenAI-compatible and Anthropic providers (Start/Delta/End events), de-duplicated live agent rendering, made `--agent` win over `-p`; Windows packaging fixes (npm.cmd/PATHEXT resolution, read-only-safe deletes, `.git` no longer copied into packages) and smoke-script hardening (agent-mode LLM step, `PI_NET_PROVIDER`/`PI_NET_MODEL`, complete summary); `/model` picker now accepts a selection (number or `provider/id`), completing spec 08 §7d; 401 tests passing. Next: coverage measurement and SBOM/signing decisions; see `STATUS.md` and `TASKS.md`.*
+*Last updated: 2026-10-31 — model picker (`/model`) and session picker (`/resume`) gained interactive arrow-key selection (`ListPicker`: ↑/↓/Home/End + Enter, highlight starting on the active model; typed numbers/ids and `q`/Esc still work); 406 tests passing. Remaining: coverage measurement and SBOM/signing decisions; see `STATUS.md` and `TASKS.md`.*
 *Target: .NET 10 (preview → GA)*
 *Reference: https://github.com/earendil-works/pi*

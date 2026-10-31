@@ -1,6 +1,6 @@
 # PiNet — Project Status
 
-> Last updated: 2026-10-17
+> Last updated: 2026-10-31
 > Companion to [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md). Per-stage detail lives in
 > [`docs/spec/`](docs/spec/) (spec-driven development: spec written before code, then verified).
 
@@ -9,7 +9,7 @@
 | Item | State |
 |------|-------|
 | Solution | `PiNet.slnx` — builds clean (0 warnings, 0 errors) |
-| Tests | **401 passing** (40 `PiNet.Providers.Tests` + 49 `PiNet.Permissions.Tests` + 52 `PiNet.AgentCore.Tests` + 27 `PiNet.Sessions.Tests` + 164 `PiNet.Cli.Tests` + 69 `PiNet.Extensions.Tests`), 0 failing |
+| Tests | **406 passing** (40 `PiNet.Providers.Tests` + 49 `PiNet.Permissions.Tests` + 52 `PiNet.AgentCore.Tests` + 27 `PiNet.Sessions.Tests` + 169 `PiNet.Cli.Tests` + 69 `PiNet.Extensions.Tests`), 0 failing |
 | Current stage | **Stage 8 — Packaging / CI** — packaging + CI workflow + `pinet update --self` implemented and verified locally; distribution from source (local pack + install scripts + per-RID publish) |
 | Stages complete | 1, 2, 3, 4, 5, 6 + spec 07 + spec 08 (incl. 7a.2; specs verified against the running CLI) |
 | Packaging | `dotnet pack` → `PiNet.0.1.0.nupkg` verified (tool install + run from a local feed); self-contained `win-x64` publish verified; CI workflow committed; `scripts/publish.ps1` for local per-RID publishes |
@@ -61,6 +61,9 @@ Implemented:
 - `AgentConsoleRenderer` — single source of truth for streaming output, shared by `--agent` one-shot and the loop (SR-04.10)
 - `TurnRunner` — shared turn + watermark persistence; aborted turns not persisted (SR-04.09)
 - Ctrl+C: cancels running turn → back to prompt; on empty prompt → exits (code 130 on abort)
+- Interactive pickers (`ListPicker`): `/model` and `/resume` support arrow-key
+  selection (↑/↓/Home/End + Enter; highlight starts on the active model),
+  while the typed path (number, id, `q`/Esc) is preserved
 
 All acceptance criteria checked off (evidence in spec §7 verification log):
 - [x] AC1: multi-prompt session persists across turns (JSONL line count + context assertions)
@@ -236,7 +239,7 @@ per-RID self-contained binaries. Remaining: SBOM/signing decisions.
 
 ```bash
 dotnet build PiNet.slnx        # 0 warnings, 0 errors
-dotnet test PiNet.slnx         # 401/401 passing
+dotnet test PiNet.slnx         # 406/406 passing
 dotnet run --project src/PiNet.Cli -- --list-models
 dotnet run --project src/PiNet.Cli -- --provider faux --model faux-model -p "hi"
 dotnet pack src/PiNet.Cli/PiNet.Cli.csproj -c Release -o artifacts/packages

@@ -8,6 +8,19 @@ Progress per stage (with verification logs) lives in
 [`STATUS.md`](STATUS.md) and [`docs/spec/`](docs/spec/); this file is the
 chronological change record.
 
+## [Unreleased]
+
+### Added
+
+- **Arrow-key model picker** — `/model` (and `/models`) now opens a live
+  interactive picker (`ListPicker`): the numbered list is printed once and a
+  selection line is redrawn in place with the codebase's zero-dependency
+  `\r`-rewrite technique. ↑/↓/Home/End move a highlight that starts on the active model;
+  Enter picks the highlighted row. Typed entry is unchanged — a number or
+  `provider/id`, Backspace edits, `q`+Enter or Escape cancels. `/resume` uses
+  the same picker (typed number or session id still accepted). 5 new
+  `InteractiveLoopTests` (406 passing).
+
 ## [0.1.0] — 2026-10-16
 
 Initial complete implementation: stages 1–8 of

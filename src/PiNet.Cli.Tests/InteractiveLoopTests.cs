@@ -573,6 +573,145 @@ public class InteractiveLoopTests
         Assert.Equal(1, p1.StreamCalls);
     }
 
+    // --- Model picker arrow-key navigation ------------------------------------
+
+    [Fact]
+    public async Task Model_Picker_ArrowDown_SelectsHighlightedModel()
+    {
+        using var fx = new Fixture();
+        var p1 = new ScriptedProvider("p1", "from p1");
+        var p2 = new ScriptedProvider("p2", "from p2");
+        fx.Registry.RegisterProvider(p1);
+        fx.Registry.RegisterProvider(p2);
+
+        var input = new ScriptedInput(
+        [
+            ..Keys.Type("/model"), Keys.Enter,
+            Keys.Down, // highlight moves from p1 (default/current) to p2
+            Keys.Enter,
+            ..Keys.Type("hi"), Keys.Enter,
+            ..Keys.Type("/quit"), Keys.Enter
+        ]);
+        var output = new CapturingOutput();
+        var loop = NewLoop(fx, input, output, providerId: "p1", modelId: "p1-model");
+
+        var code = await loop.RunAsync();
+
+        Assert.Equal(0, code);
+        Assert.Contains("(model: p2/p2-model)", output.All);
+        Assert.Contains(output.EditorLinesSnapshot, l => l.Buffer.Contains("[2/2] p2/p2-model"));
+        Assert.Equal(0, p1.StreamCalls);
+        Assert.Equal(1, p2.StreamCalls);
+    }
+
+    [Fact]
+    public async Task Model_Picker_ArrowUp_WrapsToLastModel()
+    {
+        using var fx = new Fixture();
+        var p1 = new ScriptedProvider("p1", "from p1");
+        var p2 = new ScriptedProvider("p2", "from p2");
+        fx.Registry.RegisterProvider(p1);
+        fx.Registry.RegisterProvider(p2);
+
+        var input = new ScriptedInput(
+        [
+            ..Keys.Type("/model"), Keys.Enter,
+            Keys.Up, // wraps from the first row to the last (p2)
+            Keys.Enter,
+            ..Keys.Type("hi"), Keys.Enter,
+            ..Keys.Type("/quit"), Keys.Enter
+        ]);
+        var output = new CapturingOutput();
+        var loop = NewLoop(fx, input, output, providerId: "p1", modelId: "p1-model");
+
+        var code = await loop.RunAsync();
+
+        Assert.Equal(0, code);
+        Assert.Contains("(model: p2/p2-model)", output.All);
+        Assert.Contains(output.EditorLinesSnapshot, l => l.Buffer.Contains("[2/2] p2/p2-model"));
+        Assert.Equal(0, p1.StreamCalls);
+        Assert.Equal(1, p2.StreamCalls);
+    }
+
+    [Fact]
+    public async Task Model_Picker_EnterPicksDefaultHighlight_TheActiveModel()
+    {
+        using var fx = new Fixture();
+        var p1 = new ScriptedProvider("p1", "from p1");
+        fx.Registry.RegisterProvider(p1);
+
+        var input = new ScriptedInput(
+        [
+            ..Keys.Type("/model"), Keys.Enter,
+            Keys.Enter, // no movement: the highlight starts on the active model
+            ..Keys.Type("hi"), Keys.Enter,
+            ..Keys.Type("/quit"), Keys.Enter
+        ]);
+        var output = new CapturingOutput();
+        var loop = NewLoop(fx, input, output, providerId: "p1", modelId: "p1-model");
+
+        var code = await loop.RunAsync();
+
+        Assert.Equal(0, code);
+        Assert.Contains("(model: p1/p1-model)", output.All);
+        Assert.Contains(output.EditorLinesSnapshot, l => l.Buffer.Contains("[1/1] p1/p1-model"));
+        Assert.Equal(1, p1.StreamCalls);
+    }
+
+    [Fact]
+    public async Task Model_Picker_Escape_KeepsCurrentModel()
+    {
+        using var fx = new Fixture();
+        var p1 = new ScriptedProvider("p1", "ok");
+        fx.Registry.RegisterProvider(p1);
+
+        var input = new ScriptedInput(
+        [
+            ..Keys.Type("/model"), Keys.Enter,
+            Keys.Escape, // cancel the picker
+            ..Keys.Type("hi"), Keys.Enter,
+            ..Keys.Type("/quit"), Keys.Enter
+        ]);
+        var output = new CapturingOutput();
+        var loop = NewLoop(fx, input, output, providerId: "p1", modelId: "p1-model");
+
+        var code = await loop.RunAsync();
+
+        Assert.Equal(0, code);
+        Assert.Contains("Available models:", output.All);
+        Assert.DoesNotContain("(model:", output.All);
+        Assert.Equal(1, p1.StreamCalls);
+    }
+
+    [Fact]
+    public async Task Model_Picker_TypingThenBackspace_ReturnsToHighlight_AndPicksIt()
+    {
+        using var fx = new Fixture();
+        var p1 = new ScriptedProvider("p1", "from p1");
+        var p2 = new ScriptedProvider("p2", "from p2");
+        fx.Registry.RegisterProvider(p1);
+        fx.Registry.RegisterProvider(p2);
+
+        var input = new ScriptedInput(
+        [
+            ..Keys.Type("/model"), Keys.Enter,
+            Keys.Down, // highlight p2
+            ..Keys.Type("9"), // switches to typed entry
+            Keys.Backspace, // goes back to highlight mode
+            Keys.Enter, // picks the highlighted row (p2)
+            ..Keys.Type("hi"), Keys.Enter,
+            ..Keys.Type("/quit"), Keys.Enter
+        ]);
+        var output = new CapturingOutput();
+        var loop = NewLoop(fx, input, output, providerId: "p1", modelId: "p1-model");
+
+        var code = await loop.RunAsync();
+
+        Assert.Equal(0, code);
+        Assert.Contains("(model: p2/p2-model)", output.All);
+        Assert.Equal(1, p2.StreamCalls);
+    }
+
     // --- SR-04.06: --no-session ----------------------------------------------
 
     [Fact]
