@@ -21,6 +21,17 @@ chronological change record.
   the same picker (typed number or session id still accepted). 5 new
   `InteractiveLoopTests` (406 passing).
 
+### Changed
+
+- **`run.bat` no longer builds on every launch.** `pinet.exe` starts in ~0.1 s,
+  but even an incremental dev `dotnet build` costs ~1.5–2 s (much more on cold
+  MSBuild/file-indexing machines) — that was the perceived "binary takes ages
+  to load". The script now checks staleness first
+  (`scripts\pinet-uptodate.ps1`: any `*.cs`/`*.csproj` under `src/` newer than
+  the executable, ignoring `bin`/`obj`) and rebuilds only when needed: a run
+  with an up-to-date binary reaches the interactive prompt in ~0.5 s.
+  `PNET_FORCE_BUILD=1` forces a full rebuild.
+
 ## [0.1.0] — 2026-10-16
 
 Initial complete implementation: stages 1–8 of

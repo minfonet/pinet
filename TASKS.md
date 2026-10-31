@@ -68,3 +68,9 @@
   `bin\...\pinet.exe` locked, and pauses on failure. Two stuck launches were
   diagnosed: one apphost suspended at 2 MB (terminal handoff never resumed it)
   and one app running fine inside a hidden console with no terminal window.
+- [x] **`run.bat` skips the build when the binary is up to date**
+  (2026-10-31) — the slow start was not pinet.exe (~0.1 s) but the unconditional
+  `dotnet build` in the script; staleness is now checked with
+  `scripts/pinet-uptodate.ps1` (sources newer than the executable rebuild;
+  `bin`/`obj` timestamps ignored; `PNET_FORCE_BUILD=1` forces), cutting an
+  unchanged start to ~0.5 s.
